@@ -20,7 +20,8 @@
       "Bash(rm:*)",
       "Bash(cat:*)",
       "Bash(od:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "WebFetch(domain:docs.railway.com)"
     ],
     "deny": []
   }
