@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import urllib.parse
 
+# Force rebuild - using psycopg3 for Python 3.13 compatibility
 app = Flask(__name__)
 
 # Database connection helper
