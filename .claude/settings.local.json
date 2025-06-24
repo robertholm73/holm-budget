@@ -22,7 +22,9 @@
       "Bash(od:*)",
       "Bash(cp:*)",
       "WebFetch(domain:docs.railway.com)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }

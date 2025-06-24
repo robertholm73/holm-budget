@@ -1,120 +1,51 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
-import psycopg2
-import psycopg2.extras
+import sqlite3
 import os
 from datetime import datetime
 import json
-import urllib.parse
 
 app = Flask(__name__)
 
-# Helper to get parameter style based on database type
-def get_param_style():
-    return '%s' if os.environ.get('DATABASE_URL') else '?'
-
-# Helper to get user column name based on database type
-def get_user_column():
-    return 'user_name' if os.environ.get('DATABASE_URL') else 'user'
-
-# Database connection helper
-def get_db_connection():
-    database_url = os.environ.get('DATABASE_URL')
-    if database_url:
-        # Parse the DATABASE_URL for Render
-        parsed = urllib.parse.urlparse(database_url)
-        return psycopg2.connect(
-            host=parsed.hostname,
-            database=parsed.path[1:],  # Remove leading slash
-            user=parsed.username,
-            password=parsed.password,
-            port=parsed.port
-        )
-    else:
-        # Fallback to SQLite for now if no DATABASE_URL
-        import sqlite3
-        return sqlite3.connect('budget.db')
-
 # Initialize database
 def init_db():
-    conn = get_db_connection()
-    database_url = os.environ.get('DATABASE_URL')
+    conn = sqlite3.connect('budget.db')
     
-    if database_url:
-        # PostgreSQL setup
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS accounts (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255) NOT NULL UNIQUE,
-                account_type VARCHAR(50) NOT NULL,
-                balance DECIMAL(10,2) NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-    else:
-        # SQLite setup (fallback)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                account_type TEXT NOT NULL,
-                balance REAL NOT NULL DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+    # Bank accounts table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            account_type TEXT NOT NULL,
+            balance REAL NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
-    # Budget categories table
-    if database_url:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS budget_categories (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255) NOT NULL UNIQUE,
-                budgeted_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
-                current_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-    else:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS budget_categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                budgeted_amount REAL NOT NULL DEFAULT 0,
-                current_balance REAL NOT NULL DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+    # Budget categories table  
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS budget_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            budgeted_amount REAL NOT NULL DEFAULT 0,
+            current_balance REAL NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
     # Updated purchases table with account linking
-    if database_url:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS purchases (
-                id SERIAL PRIMARY KEY,
-                user_name VARCHAR(255) NOT NULL,
-                amount DECIMAL(10,2) NOT NULL,
-                account_id INTEGER,
-                budget_category_id INTEGER,
-                description TEXT,
-                date TIMESTAMP NOT NULL,
-                FOREIGN KEY (account_id) REFERENCES accounts (id),
-                FOREIGN KEY (budget_category_id) REFERENCES budget_categories (id)
-            )
-        ''')
-    else:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS purchases (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user TEXT NOT NULL,
-                amount REAL NOT NULL,
-                account_id INTEGER,
-                budget_category_id INTEGER,
-                description TEXT,
-                date TEXT NOT NULL,
-                FOREIGN KEY (account_id) REFERENCES accounts (id),
-                FOREIGN KEY (budget_category_id) REFERENCES budget_categories (id)
-            )
-        ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS purchases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user TEXT NOT NULL,
+            amount REAL NOT NULL,
+            account_id INTEGER,
+            budget_category_id INTEGER,
+            description TEXT,
+            date TEXT NOT NULL,
+            FOREIGN KEY (account_id) REFERENCES accounts (id),
+            FOREIGN KEY (budget_category_id) REFERENCES budget_categories (id)
+        )
+    ''')
     
     # Insert default bank accounts if they don't exist
     accounts = [
@@ -127,41 +58,24 @@ def init_db():
     ]
     
     for name, acc_type in accounts:
-        if database_url:
-            cursor.execute('''
-                INSERT INTO accounts (name, account_type, balance) 
-                VALUES (%s, %s, 0) ON CONFLICT (name) DO NOTHING
-            ''', (name, acc_type))
-        else:
-            cursor.execute('''
-                INSERT OR IGNORE INTO accounts (name, account_type, balance) 
-                VALUES (?, ?, 0)
-            ''', (name, acc_type))
+        conn.execute('''
+            INSERT OR IGNORE INTO accounts (name, account_type, balance) 
+            VALUES (?, ?, 0)
+        ''', (name, acc_type))
     
     # Insert default budget categories if they don't exist
     categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Other']
     for category in categories:
-        if database_url:
-            cursor.execute('''
-                INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
-                VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
-            ''', (category,))
-        else:
-            cursor.execute('''
-                INSERT OR IGNORE INTO budget_categories (name, budgeted_amount, current_balance) 
-                VALUES (?, 0, 0)
-            ''', (category,))
+        conn.execute('''
+            INSERT OR IGNORE INTO budget_categories (name, budgeted_amount, current_balance) 
+            VALUES (?, 0, 0)
+        ''', (category,))
     
     conn.commit()
     conn.close()
 
 # Initialize database on startup
-try:
-    init_db()
-    print("Database initialized successfully")
-except Exception as e:
-    print(f"Database initialization failed: {e}")
-    print("App will continue but database operations may fail")
+init_db()
 
 @app.route('/')
 def mobile_form():
@@ -174,8 +88,7 @@ def sync_purchases():
         if not purchases:
             return jsonify({"status": "error", "message": "No purchases to sync"})
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        conn = sqlite3.connect('budget.db')
         synced_count = 0
         
         for purchase in purchases:
@@ -186,28 +99,28 @@ def sync_purchases():
             # Get budget category ID
             budget_category_id = None
             if budget_category_name:
-                cursor.execute('SELECT id FROM budget_categories WHERE name = %s', (budget_category_name,))
+                cursor = conn.execute('SELECT id FROM budget_categories WHERE name = ?', (budget_category_name,))
                 result = cursor.fetchone()
                 if result:
                     budget_category_id = result[0]
             
             # Insert purchase
-            cursor.execute('''
-                INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
-                VALUES (%s, %s, %s, %s, %s, %s)
+            conn.execute('''
+                INSERT INTO purchases (user, amount, account_id, budget_category_id, description, date)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', ('wife', amount, account_id, budget_category_id, 
                   purchase.get('description', ''), purchase['timestamp']))
             
             # Update account balance (withdraw)
             if account_id:
-                cursor.execute('''
-                    UPDATE accounts SET balance = balance - %s WHERE id = %s
+                conn.execute('''
+                    UPDATE accounts SET balance = balance - ? WHERE id = ?
                 ''', (amount, account_id))
             
             # Update budget category balance (withdraw)
             if budget_category_id:
-                cursor.execute('''
-                    UPDATE budget_categories SET current_balance = current_balance - %s WHERE id = %s
+                conn.execute('''
+                    UPDATE budget_categories SET current_balance = current_balance - ? WHERE id = ?
                 ''', (amount, budget_category_id))
             
             synced_count += 1
@@ -223,10 +136,9 @@ def sync_purchases():
 @app.route('/get_purchases')
 def get_purchases():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT p.id, p.user_name, p.amount, p.description, p.date,
+        conn = sqlite3.connect('budget.db')
+        cursor = conn.execute('''
+            SELECT p.id, p.user, p.amount, p.description, p.date,
                    a.name as account_name, bc.name as category_name
             FROM purchases p 
             LEFT JOIN accounts a ON p.account_id = a.id
@@ -257,9 +169,8 @@ def get_purchases():
 @app.route('/get_accounts')
 def get_accounts():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, name, balance FROM accounts ORDER BY name')
+        conn = sqlite3.connect('budget.db')
+        cursor = conn.execute('SELECT id, name, balance FROM accounts ORDER BY name')
         accounts = cursor.fetchall()
         conn.close()
         
@@ -279,9 +190,8 @@ def get_accounts():
 @app.route('/get_budget_categories')
 def get_budget_categories():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
+        conn = sqlite3.connect('budget.db')
+        cursor = conn.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
         categories = cursor.fetchall()
         conn.close()
         
@@ -310,9 +220,8 @@ def update_account_balance():
         if account_id is None or new_balance is None:
             return jsonify({"status": "error", "message": "Missing account_id or balance"})
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE accounts SET balance = %s WHERE id = %s', (float(new_balance), account_id))
+        conn = sqlite3.connect('budget.db')
+        conn.execute('UPDATE accounts SET balance = ? WHERE id = ?', (float(new_balance), account_id))
         conn.commit()
         conn.close()
         
@@ -331,9 +240,8 @@ def update_budget_amount():
         if category_id is None or budget_amount is None:
             return jsonify({"status": "error", "message": "Missing category_id or budget_amount"})
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE budget_categories SET budgeted_amount = %s WHERE id = %s', 
+        conn = sqlite3.connect('budget.db')
+        conn.execute('UPDATE budget_categories SET budgeted_amount = ? WHERE id = ?', 
                     (float(budget_amount), category_id))
         conn.commit()
         conn.close()
