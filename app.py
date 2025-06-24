@@ -8,6 +8,14 @@ import urllib.parse
 
 app = Flask(__name__)
 
+# Helper to get parameter style based on database type
+def get_param_style():
+    return '%s' if os.environ.get('DATABASE_URL') else '?'
+
+# Helper to get user column name based on database type
+def get_user_column():
+    return 'user_name' if os.environ.get('DATABASE_URL') else 'user'
+
 # Database connection helper
 def get_db_connection():
     database_url = os.environ.get('DATABASE_URL')
@@ -22,56 +30,91 @@ def get_db_connection():
             port=parsed.port
         )
     else:
-        # Local development fallback
-        return psycopg2.connect(
-            host='localhost',
-            database='holm_budget_database',
-            user='postgres',
-            password='password',
-            port=5432
-        )
+        # Fallback to SQLite for now if no DATABASE_URL
+        import sqlite3
+        return sqlite3.connect('budget.db')
 
 # Initialize database
 def init_db():
     conn = get_db_connection()
+    database_url = os.environ.get('DATABASE_URL')
     
-    # Bank accounts table
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS accounts (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(255) NOT NULL UNIQUE,
-            account_type VARCHAR(50) NOT NULL,
-            balance DECIMAL(10,2) NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    if database_url:
+        # PostgreSQL setup
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accounts (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE,
+                account_type VARCHAR(50) NOT NULL,
+                balance DECIMAL(10,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+    else:
+        # SQLite setup (fallback)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                account_type TEXT NOT NULL,
+                balance REAL NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
     
-    # Budget categories table  
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS budget_categories (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(255) NOT NULL UNIQUE,
-            budgeted_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
-            current_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    # Budget categories table
+    if database_url:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS budget_categories (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE,
+                budgeted_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+                current_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS budget_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                budgeted_amount REAL NOT NULL DEFAULT 0,
+                current_balance REAL NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
     
     # Updated purchases table with account linking
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS purchases (
-            id SERIAL PRIMARY KEY,
-            user_name VARCHAR(255) NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            account_id INTEGER,
-            budget_category_id INTEGER,
-            description TEXT,
-            date TIMESTAMP NOT NULL,
-            FOREIGN KEY (account_id) REFERENCES accounts (id),
-            FOREIGN KEY (budget_category_id) REFERENCES budget_categories (id)
-        )
-    ''')
+    if database_url:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS purchases (
+                id SERIAL PRIMARY KEY,
+                user_name VARCHAR(255) NOT NULL,
+                amount DECIMAL(10,2) NOT NULL,
+                account_id INTEGER,
+                budget_category_id INTEGER,
+                description TEXT,
+                date TIMESTAMP NOT NULL,
+                FOREIGN KEY (account_id) REFERENCES accounts (id),
+                FOREIGN KEY (budget_category_id) REFERENCES budget_categories (id)
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS purchases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user TEXT NOT NULL,
+                amount REAL NOT NULL,
+                account_id INTEGER,
+                budget_category_id INTEGER,
+                description TEXT,
+                date TEXT NOT NULL,
+                FOREIGN KEY (account_id) REFERENCES accounts (id),
+                FOREIGN KEY (budget_category_id) REFERENCES budget_categories (id)
+            )
+        ''')
     
     # Insert default bank accounts if they don't exist
     accounts = [
@@ -84,24 +127,41 @@ def init_db():
     ]
     
     for name, acc_type in accounts:
-        cursor.execute('''
-            INSERT INTO accounts (name, account_type, balance) 
-            VALUES (%s, %s, 0) ON CONFLICT (name) DO NOTHING
-        ''', (name, acc_type))
+        if database_url:
+            cursor.execute('''
+                INSERT INTO accounts (name, account_type, balance) 
+                VALUES (%s, %s, 0) ON CONFLICT (name) DO NOTHING
+            ''', (name, acc_type))
+        else:
+            cursor.execute('''
+                INSERT OR IGNORE INTO accounts (name, account_type, balance) 
+                VALUES (?, ?, 0)
+            ''', (name, acc_type))
     
     # Insert default budget categories if they don't exist
     categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Other']
     for category in categories:
-        cursor.execute('''
-            INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
-            VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
-        ''', (category,))
+        if database_url:
+            cursor.execute('''
+                INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
+                VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
+            ''', (category,))
+        else:
+            cursor.execute('''
+                INSERT OR IGNORE INTO budget_categories (name, budgeted_amount, current_balance) 
+                VALUES (?, 0, 0)
+            ''', (category,))
     
     conn.commit()
     conn.close()
 
 # Initialize database on startup
-init_db()
+try:
+    init_db()
+    print("Database initialized successfully")
+except Exception as e:
+    print(f"Database initialization failed: {e}")
+    print("App will continue but database operations may fail")
 
 @app.route('/')
 def mobile_form():
