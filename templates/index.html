@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Tracker</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#000000">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e1e1;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .sync-info {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .recent-purchases {
+            margin-top: 30px;
+        }
+        
+        .recent-purchases h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .purchase-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .purchase-amount {
+            font-weight: bold;
+            color: #764ba2;
+        }
+        
+        .purchase-details {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .balances-section {
+            margin-top: 30px;
+        }
+        
+        .balances-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            margin-top: 25px;
+        }
+        
+        .balance-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .balance-name {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .balance-amount {
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .balance-amount.negative {
+            color: #dc3545;
+        }
+        
+        .budget-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 8px;
+        }
+        
+        .budget-name {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .budget-bar {
+            background: #e9ecef;
+            border-radius: 3px;
+            height: 6px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+        
+        .budget-progress {
+            background: #667eea;
+            height: 100%;
+            transition: width 0.3s;
+        }
+        
+        .budget-progress.over-budget {
+            background: #dc3545;
+        }
+        
+        .budget-text {
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💰 Budget Tracker</h1>
+        
+        <div id="syncInfo" class="sync-info">
+            <span id="pendingCount">Pending uploads: 0</span>
+            <br>
+            <span id="onlineStatus">Online</span>
+        </div>
+        
+        <form id="purchaseForm">
+            <div class="form-group">
+                <label for="account">Account</label>
+                <select id="account" required>
+                    <option value="">Select account...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="amount">Amount (R)</label>
+                <input type="number" id="amount" step="0.01" placeholder="0.00" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select id="category">
+                    <option value="">Select category...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description</label>
+                <input type="text" id="description" placeholder="What was this for?">
+            </div>
+            
+            <button type="submit" class="submit-btn">Add Purchase</button>
+        </form>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div class="balances-section">
+            <h3>Account Balances</h3>
+            <div id="accountBalances"></div>
+            
+            <h3>Budget Status</h3>
+            <div id="budgetStatus"></div>
+        </div>
+        
+        <div class="recent-purchases">
+            <h3>Recent Purchases</h3>
+            <div id="recentList"></div>
+        </div>
+    </div>
+
+    <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(registration => console.log('SW registered'))
+                .catch(error => console.log('SW registration failed'));
+        }
+
+        // Global variables
+        let isOnline = navigator.onLine;
+        let accounts = [];
+        let budgetCategories = [];
+        
+        // Update UI based on connection status
+        function updateOnlineStatus() {
+            const statusElement = document.getElementById('onlineStatus');
+            if (isOnline) {
+                statusElement.textContent = 'Online - Will sync automatically';
+                statusElement.style.color = '#155724';
+            } else {
+                statusElement.textContent = 'Offline - Will sync when connected';
+                statusElement.style.color = '#856404';
+            }
+        }
+        
+        // Update pending count display
+        function updatePendingCount() {
+            const pending = JSON.parse(localStorage.getItem('pendingPurchases') || '[]');
+            document.getElementById('pendingCount').textContent = `Pending uploads: ${pending.length}`;
+        }
+        
+        // Add purchase to local storage
+        function addPurchaseLocally(purchase) {
+            let purchases = JSON.parse(localStorage.getItem('pendingPurchases') || '[]');
+            purchase.id = Date.now();
+            purchase.timestamp = new Date().toISOString();
+            purchases.push(purchase);
+            localStorage.setItem('pendingPurchases', JSON.stringify(purchases));
+            
+            // Also add to recent purchases for immediate display
+            let recent = JSON.parse(localStorage.getItem('recentPurchases') || '[]');
+            recent.unshift(purchase);
+            recent = recent.slice(0, 10); // Keep only last 10
+            localStorage.setItem('recentPurchases', JSON.stringify(recent));
+            
+            updatePendingCount();
+            displayRecentPurchases();
+        }
+        
+        // Display recent purchases
+        function displayRecentPurchases() {
+            const recent = JSON.parse(localStorage.getItem('recentPurchases') || '[]');
+            const container = document.getElementById('recentList');
+            
+            if (recent.length === 0) {
+                container.innerHTML = '<p style="color: #666; text-align: center;">No recent purchases</p>';
+                return;
+            }
+            
+            container.innerHTML = recent.map(purchase => `
+                <div class="purchase-item">
+                    <div class="purchase-amount">R${parseFloat(purchase.amount).toFixed(2)}</div>
+                    <div class="purchase-details">
+                        ${purchase.category} ${purchase.category && purchase.description ? '•' : ''} ${purchase.description}
+                        <br><small>${new Date(purchase.timestamp).toLocaleString()}</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Sync purchases with server
+        async function syncPurchases() {
+            if (!isOnline) return;
+            
+            const pending = JSON.parse(localStorage.getItem('pendingPurchases') || '[]');
+            if (pending.length === 0) return;
+            
+            try {
+                const response = await fetch('/sync_purchases', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(pending)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    localStorage.removeItem('pendingPurchases');
+                    updatePendingCount();
+                    showStatus(`✅ Synced ${result.synced} purchases!`, 'success');
+                } else {
+                    showStatus(`❌ Sync failed: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('Sync error:', error);
+                showStatus('❌ Sync failed - will retry later', 'error');
+            }
+        }
+        
+        // Show status message
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Load accounts and budget categories
+        async function loadAccountsAndBudgets() {
+            if (!isOnline) return;
+            
+            try {
+                // Load accounts
+                const accountsResponse = await fetch('/get_accounts');
+                accounts = await accountsResponse.json();
+                
+                // Load budget categories
+                const budgetsResponse = await fetch('/get_budget_categories');
+                budgetCategories = await budgetsResponse.json();
+                
+                // Update dropdowns
+                updateAccountDropdown();
+                updateCategoryDropdown();
+                updateBalanceDisplays();
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+        
+        // Update account dropdown
+        function updateAccountDropdown() {
+            const accountSelect = document.getElementById('account');
+            accountSelect.innerHTML = '<option value="">Select account...</option>';
+            
+            accounts.forEach(account => {
+                const option = document.createElement('option');
+                option.value = account.id;
+                option.textContent = `${account.name} (R${account.balance.toFixed(2)})`;
+                accountSelect.appendChild(option);
+            });
+        }
+        
+        // Update category dropdown
+        function updateCategoryDropdown() {
+            const categorySelect = document.getElementById('category');
+            categorySelect.innerHTML = '<option value="">Select category...</option>';
+            
+            budgetCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category.name;
+                option.textContent = category.name;
+                categorySelect.appendChild(option);
+            });
+        }
+        
+        // Update balance displays
+        function updateBalanceDisplays() {
+            // Account balances
+            const accountBalancesDiv = document.getElementById('accountBalances');
+            if (accounts.length === 0) {
+                accountBalancesDiv.innerHTML = '<p style="color: #666; text-align: center;">No account data</p>';
+            } else {
+                accountBalancesDiv.innerHTML = accounts.map(account => `
+                    <div class="balance-item">
+                        <span class="balance-name">${account.name}</span>
+                        <span class="balance-amount ${account.balance < 0 ? 'negative' : ''}">
+                            R${account.balance.toFixed(2)}
+                        </span>
+                    </div>
+                `).join('');
+            }
+            
+            // Budget status
+            const budgetStatusDiv = document.getElementById('budgetStatus');
+            if (budgetCategories.length === 0) {
+                budgetStatusDiv.innerHTML = '<p style="color: #666; text-align: center;">No budget data</p>';
+            } else {
+                budgetStatusDiv.innerHTML = budgetCategories
+                    .filter(cat => cat.budgeted_amount > 0)
+                    .map(category => {
+                        const spent = Math.abs(category.current_balance);
+                        const percentage = category.budgeted_amount > 0 ? (spent / category.budgeted_amount) * 100 : 0;
+                        const isOverBudget = spent > category.budgeted_amount;
+                        
+                        return `
+                            <div class="budget-item">
+                                <div class="budget-name">${category.name}</div>
+                                <div class="budget-bar">
+                                    <div class="budget-progress ${isOverBudget ? 'over-budget' : ''}" 
+                                         style="width: ${Math.min(percentage, 100)}%"></div>
+                                </div>
+                                <div class="budget-text">
+                                    R${spent.toFixed(2)} of R${category.budgeted_amount.toFixed(2)} 
+                                    (R${category.remaining.toFixed(2)} remaining)
+                                </div>
+                            </div>
+                        `;
+                    }).join('') || '<p style="color: #666; text-align: center;">No budgets set</p>';
+            }
+        }
+        
+        // Form submission handler
+        document.getElementById('purchaseForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const accountId = document.getElementById('account').value;
+            const amount = document.getElementById('amount').value;
+            const category = document.getElementById('category').value;
+            const description = document.getElementById('description').value;
+            
+            if (!amount) {
+                showStatus('Please enter an amount', 'error');
+                return;
+            }
+            
+            if (!accountId) {
+                showStatus('Please select an account', 'error');
+                return;
+            }
+            
+            const purchase = {
+                account_id: parseInt(accountId),
+                amount: parseFloat(amount),
+                category: category,
+                description: description
+            };
+            
+            addPurchaseLocally(purchase);
+            showStatus('💾 Purchase saved locally!', 'success');
+            
+            // Reset form
+            this.reset();
+            
+            // Try to sync immediately if online
+            if (isOnline) {
+                setTimeout(syncPurchases, 1000);
+            }
+        });
+        
+        // Network event listeners
+        window.addEventListener('online', () => {
+            isOnline = true;
+            updateOnlineStatus();
+            loadAccountsAndBudgets();
+            syncPurchases();
+        });
+        
+        window.addEventListener('offline', () => {
+            isOnline = false;
+            updateOnlineStatus();
+        });
+        
+        // Initialize
+        updateOnlineStatus();
+        updatePendingCount();
+        displayRecentPurchases();
+        
+        // Load data on page load if online
+        if (isOnline) {
+            loadAccountsAndBudgets();
+            setTimeout(syncPurchases, 2000);
+        }
+        
+        // Auto-sync every 30 seconds when online
+        setInterval(() => {
+            if (isOnline) {
+                syncPurchases();
+                loadAccountsAndBudgets(); // Refresh balances
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

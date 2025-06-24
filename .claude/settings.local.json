@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(railway service:*)",
+      "Bash(railway status:*)",
+      "Bash(railway up:*)",
+      "Bash(pip --version)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(sudo apt:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(railway --version)",
+      "Bash(railway login:*)",
+      "Bash(railway whoami:*)",
+      "Bash(railway link:*)",
+      "Bash(railway projects:*)",
+      "Bash(rm:*)",
+      "Bash(cat:*)",
+      "Bash(od:*)",
+      "Bash(cp:*)"
+    ],
+    "deny": []
+  }
+}
