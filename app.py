@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
-import psycopg
+import psycopg2
 import os
 from datetime import datetime
 import json
@@ -12,7 +12,7 @@ def get_db_connection():
     database_url = os.environ.get('DATABASE_URL')
     if not database_url:
         raise ValueError("DATABASE_URL environment variable not set")
-    return psycopg.connect(database_url)
+    return psycopg2.connect(database_url)
 
 def init_db():
     conn = get_db_connection()
