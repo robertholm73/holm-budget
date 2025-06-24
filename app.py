@@ -86,11 +86,20 @@ def init_db():
 
 # Initialize database on startup
 try:
-    init_db()
-    print("Database initialized successfully")
+    print("Starting database initialization...")
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        print("ERROR: DATABASE_URL not found in environment variables")
+        print("Available env vars:", list(os.environ.keys()))
+    else:
+        print("DATABASE_URL found, attempting connection...")
+        init_db()
+        print("Database initialized successfully")
 except Exception as e:
     print(f"Database initialization failed: {e}")
-    print("Please check your DATABASE_URL environment variable")
+    import traceback
+    traceback.print_exc()
+    print("App will continue but database operations will fail")
 
 @app.route('/')
 def mobile_form():
