@@ -1,47 +1,73 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import os
 from datetime import datetime
 import json
+import urllib.parse
 
 app = Flask(__name__)
 
+# Database connection helper
+def get_db_connection():
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        # Parse the DATABASE_URL for Render
+        parsed = urllib.parse.urlparse(database_url)
+        return psycopg2.connect(
+            host=parsed.hostname,
+            database=parsed.path[1:],  # Remove leading slash
+            user=parsed.username,
+            password=parsed.password,
+            port=parsed.port
+        )
+    else:
+        # Local development fallback
+        return psycopg2.connect(
+            host='localhost',
+            database='holm_budget_database',
+            user='postgres',
+            password='password',
+            port=5432
+        )
+
 # Initialize database
 def init_db():
-    conn = sqlite3.connect('budget.db')
+    conn = get_db_connection()
     
     # Bank accounts table
-    conn.execute('''
+    cursor = conn.cursor()
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS accounts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            account_type TEXT NOT NULL,
-            balance REAL NOT NULL DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            account_type VARCHAR(50) NOT NULL,
+            balance DECIMAL(10,2) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
     # Budget categories table  
-    conn.execute('''
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS budget_categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            budgeted_amount REAL NOT NULL DEFAULT 0,
-            current_balance REAL NOT NULL DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            budgeted_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            current_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
     # Updated purchases table with account linking
-    conn.execute('''
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS purchases (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user TEXT NOT NULL,
-            amount REAL NOT NULL,
+            id SERIAL PRIMARY KEY,
+            user_name VARCHAR(255) NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
             account_id INTEGER,
             budget_category_id INTEGER,
             description TEXT,
-            date TEXT NOT NULL,
+            date TIMESTAMP NOT NULL,
             FOREIGN KEY (account_id) REFERENCES accounts (id),
             FOREIGN KEY (budget_category_id) REFERENCES budget_categories (id)
         )
@@ -58,17 +84,17 @@ def init_db():
     ]
     
     for name, acc_type in accounts:
-        conn.execute('''
-            INSERT OR IGNORE INTO accounts (name, account_type, balance) 
-            VALUES (?, ?, 0)
+        cursor.execute('''
+            INSERT INTO accounts (name, account_type, balance) 
+            VALUES (%s, %s, 0) ON CONFLICT (name) DO NOTHING
         ''', (name, acc_type))
     
     # Insert default budget categories if they don't exist
     categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Other']
     for category in categories:
-        conn.execute('''
-            INSERT OR IGNORE INTO budget_categories (name, budgeted_amount, current_balance) 
-            VALUES (?, 0, 0)
+        cursor.execute('''
+            INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
+            VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
         ''', (category,))
     
     conn.commit()
@@ -88,7 +114,8 @@ def sync_purchases():
         if not purchases:
             return jsonify({"status": "error", "message": "No purchases to sync"})
         
-        conn = sqlite3.connect('budget.db')
+        conn = get_db_connection()
+        cursor = conn.cursor()
         synced_count = 0
         
         for purchase in purchases:
@@ -99,28 +126,28 @@ def sync_purchases():
             # Get budget category ID
             budget_category_id = None
             if budget_category_name:
-                cursor = conn.execute('SELECT id FROM budget_categories WHERE name = ?', (budget_category_name,))
+                cursor.execute('SELECT id FROM budget_categories WHERE name = %s', (budget_category_name,))
                 result = cursor.fetchone()
                 if result:
                     budget_category_id = result[0]
             
             # Insert purchase
-            conn.execute('''
-                INSERT INTO purchases (user, amount, account_id, budget_category_id, description, date)
-                VALUES (?, ?, ?, ?, ?, ?)
+            cursor.execute('''
+                INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
+                VALUES (%s, %s, %s, %s, %s, %s)
             ''', ('wife', amount, account_id, budget_category_id, 
                   purchase.get('description', ''), purchase['timestamp']))
             
             # Update account balance (withdraw)
             if account_id:
-                conn.execute('''
-                    UPDATE accounts SET balance = balance - ? WHERE id = ?
+                cursor.execute('''
+                    UPDATE accounts SET balance = balance - %s WHERE id = %s
                 ''', (amount, account_id))
             
             # Update budget category balance (withdraw)
             if budget_category_id:
-                conn.execute('''
-                    UPDATE budget_categories SET current_balance = current_balance - ? WHERE id = ?
+                cursor.execute('''
+                    UPDATE budget_categories SET current_balance = current_balance - %s WHERE id = %s
                 ''', (amount, budget_category_id))
             
             synced_count += 1
@@ -136,9 +163,10 @@ def sync_purchases():
 @app.route('/get_purchases')
 def get_purchases():
     try:
-        conn = sqlite3.connect('budget.db')
-        cursor = conn.execute('''
-            SELECT p.id, p.user, p.amount, p.description, p.date,
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT p.id, p.user_name, p.amount, p.description, p.date,
                    a.name as account_name, bc.name as category_name
             FROM purchases p 
             LEFT JOIN accounts a ON p.account_id = a.id
@@ -169,8 +197,9 @@ def get_purchases():
 @app.route('/get_accounts')
 def get_accounts():
     try:
-        conn = sqlite3.connect('budget.db')
-        cursor = conn.execute('SELECT id, name, balance FROM accounts ORDER BY name')
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name, balance FROM accounts ORDER BY name')
         accounts = cursor.fetchall()
         conn.close()
         
@@ -190,8 +219,9 @@ def get_accounts():
 @app.route('/get_budget_categories')
 def get_budget_categories():
     try:
-        conn = sqlite3.connect('budget.db')
-        cursor = conn.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
         categories = cursor.fetchall()
         conn.close()
         
@@ -220,8 +250,9 @@ def update_account_balance():
         if account_id is None or new_balance is None:
             return jsonify({"status": "error", "message": "Missing account_id or balance"})
         
-        conn = sqlite3.connect('budget.db')
-        conn.execute('UPDATE accounts SET balance = ? WHERE id = ?', (float(new_balance), account_id))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE accounts SET balance = %s WHERE id = %s', (float(new_balance), account_id))
         conn.commit()
         conn.close()
         
@@ -240,8 +271,9 @@ def update_budget_amount():
         if category_id is None or budget_amount is None:
             return jsonify({"status": "error", "message": "Missing category_id or budget_amount"})
         
-        conn = sqlite3.connect('budget.db')
-        conn.execute('UPDATE budget_categories SET budgeted_amount = ? WHERE id = ?', 
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE budget_categories SET budgeted_amount = %s WHERE id = %s', 
                     (float(budget_amount), category_id))
         conn.commit()
         conn.close()

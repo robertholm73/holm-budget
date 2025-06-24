@@ -16,8 +16,8 @@ from matplotlib.figure import Figure
 class BudgetAnalyzer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.server_url = "https://holm-budget-production.up.railway.app"  # Change this to your deployed URL
-        self.local_db = "holm-budget-database.db"
+        self.server_url = "https://holm-budget.onrender.com"  # Change this to your deployed URL
+        self.local_db = "holm_budget_-database.db"
         self.init_local_db()
         self.setup_ui()
         self.setup_timer()
