@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-import psycopg2
+import psycopg
 
 # Test database connection
 def test_connection():
@@ -11,7 +11,7 @@ def test_connection():
             return False
         
         print(f"Connecting to database...")
-        conn = psycopg2.connect(database_url)
+        conn = psycopg.connect(database_url)
         cur = conn.cursor()
         
         # Test basic query
