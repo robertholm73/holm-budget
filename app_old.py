@@ -5,15 +5,17 @@ from datetime import datetime
 import json
 import urllib.parse
 
-# PostgreSQL-only budget app for Render
+# Force rebuild - using psycopg3 for Python 3.13 compatibility
 app = Flask(__name__)
 
+# Database connection helper
 def get_db_connection():
     database_url = os.environ.get('DATABASE_URL')
     if not database_url:
         raise ValueError("DATABASE_URL environment variable not set")
     return psycopg.connect(database_url)
 
+# Initialize database
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
