@@ -525,17 +525,29 @@
         // Update account dropdown for specific user
         function updateAccountDropdown(user) {
             const accountSelect = document.getElementById(`${user}Account`);
-            if (!accountSelect) return;
+            if (!accountSelect) {
+                console.log(`Account select not found for user: ${user}`);
+                return;
+            }
+            
+            if (!accounts || accounts.length === 0) {
+                console.log('No accounts data available');
+                return;
+            }
             
             accountSelect.innerHTML = '<option value="">Select account...</option>';
             
             // Filter accounts by user prefix
             const userPrefix = user.charAt(0).toUpperCase() + user.slice(1); // "peanut" -> "Peanut"
+            console.log(`Looking for accounts starting with: "${userPrefix} -"`);
+            console.log('Available accounts:', accounts.map(a => a.name));
+            
             const filteredAccounts = accounts.filter(account => 
                 account.name.startsWith(`${userPrefix} -`)
             );
             
             console.log(`Filtering accounts for ${userPrefix}:`, filteredAccounts.length, 'out of', accounts.length);
+            console.log('Filtered accounts:', filteredAccounts.map(a => a.name));
             
             filteredAccounts.forEach(account => {
                 const option = document.createElement('option');

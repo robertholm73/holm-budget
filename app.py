@@ -225,12 +225,14 @@ def get_budget_categories():
         
         category_list = []
         for c in categories:
+            budgeted = float(c[2])
+            current = float(c[3])
             category_list.append({
                 'id': c[0],
                 'name': c[1],
-                'budgeted_amount': c[2],
-                'current_balance': c[3],
-                'remaining': c[2] - abs(c[3])  # remaining budget
+                'budgeted_amount': budgeted,
+                'current_balance': current,
+                'remaining': budgeted - abs(current)  # remaining budget
             })
         
         return jsonify(category_list)
