@@ -25,7 +25,8 @@
       "Bash(mv:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebFetch(domain:holm-budget-qvsg.onrender.com)"
     ],
     "deny": []
   }
