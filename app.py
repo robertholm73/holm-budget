@@ -206,7 +206,7 @@ def get_accounts():
             account_list.append({
                 'id': a[0],
                 'name': a[1],
-                'balance': a[2]
+                'balance': float(a[2])  # Ensure balance is a number
             })
         
         return jsonify(account_list)
