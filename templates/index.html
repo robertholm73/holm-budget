@@ -507,7 +507,7 @@
             accounts.forEach(account => {
                 const option = document.createElement('option');
                 option.value = account.id;
-                option.textContent = `${account.name} (R${account.balance.toFixed(2)})`;
+                option.textContent = `${account.name} (R${parseFloat(account.balance || 0).toFixed(2)})`;
                 accountSelect.appendChild(option);
             });
         }
@@ -608,14 +608,17 @@
                 return;
             }
             
-            container.innerHTML = accounts.map(account => `
-                <div class="balance-item">
-                    <span class="balance-name">${account.name}</span>
-                    <span class="balance-amount ${account.balance < 0 ? 'negative' : ''}">
-                        R${account.balance.toFixed(2)}
-                    </span>
-                </div>
-            `).join('');
+            container.innerHTML = accounts.map(account => {
+                const balance = parseFloat(account.balance || 0);
+                return `
+                    <div class="balance-item">
+                        <span class="balance-name">${account.name}</span>
+                        <span class="balance-amount ${balance < 0 ? 'negative' : ''}">
+                            R${balance.toFixed(2)}
+                        </span>
+                    </div>
+                `;
+            }).join('');
         }
         
         // Update budget status display
