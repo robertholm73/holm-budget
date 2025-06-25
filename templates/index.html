@@ -654,17 +654,18 @@
             }
             
             container.innerHTML = budgetCategories
-                .filter(cat => cat.budgeted_amount > 0)
+                .filter(cat => parseFloat(cat.budgeted_amount || 0) > 0)
                 .map(category => {
-                    const spent = Math.abs(category.current_balance || 0);
-                    const remaining = category.budgeted_amount - spent;
-                    const percentage = category.budgeted_amount > 0 ? (spent / category.budgeted_amount) * 100 : 0;
+                    const budgeted = parseFloat(category.budgeted_amount || 0);
+                    const spent = Math.abs(parseFloat(category.current_balance || 0));
+                    const remaining = budgeted - spent;
+                    const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0;
                     
                     return `
                         <div class="balance-item">
                             <div>
                                 <div class="balance-name">${category.name}</div>
-                                <small>R${spent.toFixed(2)} of R${category.budgeted_amount.toFixed(2)} (${percentage.toFixed(1)}%)</small>
+                                <small>R${spent.toFixed(2)} of R${budgeted.toFixed(2)} (${percentage.toFixed(1)}%)</small>
                             </div>
                             <span class="balance-amount ${remaining < 0 ? 'negative' : ''}">
                                 R${remaining.toFixed(2)} left
