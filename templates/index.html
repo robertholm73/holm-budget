@@ -400,29 +400,37 @@
         
         // Tab switching
         function switchTab(evt, tabName) {
-            var i, tabContent, tabs;
-            
-            // Hide all tab content
-            tabContent = document.getElementsByClassName("tab-content");
-            for (i = 0; i < tabContent.length; i++) {
-                tabContent[i].classList.remove("active");
-            }
-            
-            // Remove active class from all tabs
-            tabs = document.getElementsByClassName("tab");
-            for (i = 0; i < tabs.length; i++) {
-                tabs[i].classList.remove("active");
-            }
-            
-            // Show selected tab and mark button as active
-            document.getElementById(tabName).classList.add("active");
-            evt.currentTarget.classList.add("active");
-            
-            currentTab = tabName;
-            
-            // Load data for the current tab
-            if (isOnline) {
-                loadDataForCurrentTab();
+            try {
+                console.log('Switching to tab:', tabName);
+                
+                // Hide all tab content
+                const tabContent = document.getElementsByClassName("tab-content");
+                for (let i = 0; i < tabContent.length; i++) {
+                    tabContent[i].classList.remove("active");
+                }
+                
+                // Remove active class from all tabs
+                const tabs = document.getElementsByClassName("tab");
+                for (let i = 0; i < tabs.length; i++) {
+                    tabs[i].classList.remove("active");
+                }
+                
+                // Show selected tab and mark button as active
+                const targetTab = document.getElementById(tabName);
+                if (targetTab) {
+                    targetTab.classList.add("active");
+                    evt.currentTarget.classList.add("active");
+                    currentTab = tabName;
+                    
+                    // Load data for the current tab
+                    if (isOnline) {
+                        loadDataForCurrentTab();
+                    }
+                } else {
+                    console.error('Tab not found:', tabName);
+                }
+            } catch (error) {
+                console.error('Error switching tabs:', error);
             }
         }
         
@@ -468,23 +476,37 @@
             if (!isOnline) return;
             
             try {
+                console.log('Loading accounts and budgets...');
+                
                 const [accountsResponse, budgetsResponse] = await Promise.all([
                     fetch('/get_accounts'),
                     fetch('/get_budget_categories')
                 ]);
                 
+                console.log('Accounts response:', accountsResponse.status);
+                console.log('Budgets response:', budgetsResponse.status);
+                
                 if (accountsResponse.ok && budgetsResponse.ok) {
                     accounts = await accountsResponse.json();
                     budgetCategories = await budgetsResponse.json();
                     
+                    console.log('Loaded accounts:', accounts.length);
+                    console.log('Loaded categories:', budgetCategories.length);
+                    console.log('Sample account:', accounts[0]);
+                    
                     updateAllDropdowns();
                     updateAdminDashboard();
                 } else {
-                    throw new Error('Failed to fetch data');
+                    const accountsText = await accountsResponse.text();
+                    const budgetsText = await budgetsResponse.text();
+                    console.error('API error - Accounts:', accountsText);
+                    console.error('API error - Budgets:', budgetsText);
+                    throw new Error(`Failed to fetch data: ${accountsResponse.status}, ${budgetsResponse.status}`);
                 }
                 
             } catch (error) {
                 console.error('Error loading data:', error);
+                console.error('Error details:', error.message);
                 showStatus('Error loading account data', 'error', currentTab);
             }
         }
