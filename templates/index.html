@@ -526,7 +526,13 @@
             
             accountSelect.innerHTML = '<option value="">Select account...</option>';
             
-            accounts.forEach(account => {
+            // Filter accounts by user prefix
+            const userPrefix = user.charAt(0).toUpperCase() + user.slice(1); // "peanut" -> "Peanut"
+            const filteredAccounts = accounts.filter(account => 
+                account.name.startsWith(`${userPrefix} -`)
+            );
+            
+            filteredAccounts.forEach(account => {
                 const option = document.createElement('option');
                 option.value = account.id;
                 option.textContent = `${account.name} (R${parseFloat(account.balance || 0).toFixed(2)})`;
@@ -541,7 +547,13 @@
             
             categorySelect.innerHTML = '<option value="">Select category...</option>';
             
-            budgetCategories.forEach(category => {
+            // Filter categories by user prefix
+            const userPrefix = user.charAt(0).toUpperCase() + user.slice(1); // "peanut" -> "Peanut"
+            const filteredCategories = budgetCategories.filter(category => 
+                category.name.startsWith(`${userPrefix} -`)
+            );
+            
+            filteredCategories.forEach(category => {
                 const option = document.createElement('option');
                 option.value = category.name;
                 option.textContent = category.name;
@@ -569,9 +581,10 @@
                     if (response.ok) {
                         const purchases = await response.json();
                         
-                        // Filter purchases for this user
+                        // Filter purchases for this user by user_name field
+                        const userPrefix = user.charAt(0).toUpperCase() + user.slice(1); // "peanut" -> "Peanut"
                         const userPurchases = purchases.filter(p => 
-                            p.user && p.user.toLowerCase().includes(user.toLowerCase())
+                            p.user && p.user.toLowerCase() === userPrefix.toLowerCase()
                         ).slice(0, 10);
                         
                         displayPurchases(userPurchases, container);
@@ -618,6 +631,69 @@
             updateAccountBalances();
             updateBudgetStatus();
             await loadAllPurchases();
+        }
+        
+        // Update admin dashboard with user-filtered data
+        function updateUserAccountBalances(user) {
+            const container = document.getElementById('adminAccountBalances');
+            if (!container) return;
+            
+            const userPrefix = user.charAt(0).toUpperCase() + user.slice(1);
+            const filteredAccounts = accounts.filter(account => 
+                account.name.startsWith(`${userPrefix} -`)
+            );
+            
+            if (filteredAccounts.length === 0) {
+                container.innerHTML = `<p style="color: #666;">No ${userPrefix} accounts found</p>`;
+                return;
+            }
+            
+            container.innerHTML = filteredAccounts.map(account => {
+                const balance = parseFloat(account.balance || 0);
+                return `
+                    <div class="balance-item">
+                        <span class="balance-name">${account.name}</span>
+                        <span class="balance-amount ${balance < 0 ? 'negative' : ''}">
+                            R${balance.toFixed(2)}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Update budget status for specific user
+        function updateUserBudgetStatus(user) {
+            const container = document.getElementById('adminBudgetStatus');
+            if (!container) return;
+            
+            const userPrefix = user.charAt(0).toUpperCase() + user.slice(1);
+            const filteredCategories = budgetCategories.filter(category => 
+                category.name.startsWith(`${userPrefix} -`) && parseFloat(category.budgeted_amount || 0) > 0
+            );
+            
+            if (filteredCategories.length === 0) {
+                container.innerHTML = `<p style="color: #666;">No ${userPrefix} budgets set</p>`;
+                return;
+            }
+            
+            container.innerHTML = filteredCategories.map(category => {
+                const budgeted = parseFloat(category.budgeted_amount || 0);
+                const spent = Math.abs(parseFloat(category.current_balance || 0));
+                const remaining = budgeted - spent;
+                const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+                
+                return `
+                    <div class="balance-item">
+                        <div>
+                            <div class="balance-name">${category.name}</div>
+                            <small>R${spent.toFixed(2)} of R${budgeted.toFixed(2)} (${percentage.toFixed(1)}%)</small>
+                        </div>
+                        <span class="balance-amount ${remaining < 0 ? 'negative' : ''}">
+                            R${remaining.toFixed(2)} left
+                        </span>
+                    </div>
+                `;
+            }).join('');
         }
         
         // Update account balances display
