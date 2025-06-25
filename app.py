@@ -133,7 +133,7 @@ def sync_purchases():
             cur.execute('''
                 INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            ''', ('wife', amount, account_id, budget_category_id, 
+            ''', (purchase.get('user_name', 'Unknown'), amount, account_id, budget_category_id, 
                   purchase.get('description', ''), purchase['timestamp']))
             
             # Update account balance (withdraw)

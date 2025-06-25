@@ -17,22 +17,61 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            padding: 10px;
         }
         
         .container {
-            max-width: 400px;
+            max-width: 500px;
             margin: 0 auto;
             background: white;
             border-radius: 15px;
-            padding: 30px;
+            overflow: hidden;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .tab-container {
+            display: flex;
+            background: #f8f9fa;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            border: none;
+            background: transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .tab:hover {
+            background: #e9ecef;
+        }
+        
+        .tab.active:hover {
+            background: white;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 30px;
+        }
+        
+        .tab-content.active {
+            display: block;
         }
         
         h1 {
             text-align: center;
             color: #333;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             font-size: 24px;
         }
         
@@ -47,7 +86,7 @@
             font-weight: 500;
         }
         
-        input, select {
+        input, select, textarea {
             width: 100%;
             padding: 12px;
             border: 2px solid #e1e1e1;
@@ -56,7 +95,7 @@
             transition: border-color 0.3s;
         }
         
-        input:focus, select:focus {
+        input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -105,21 +144,23 @@
             border-radius: 8px;
             margin-bottom: 20px;
             text-align: center;
+            font-size: 14px;
         }
         
-        .recent-purchases {
+        .data-section {
             margin-top: 30px;
         }
         
-        .recent-purchases h3 {
+        .data-section h3 {
             color: #333;
             margin-bottom: 15px;
+            font-size: 18px;
         }
         
-        .purchase-item {
+        .data-item {
             background: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
+            padding: 12px;
+            border-radius: 8px;
             margin-bottom: 10px;
             border-left: 4px solid #667eea;
         }
@@ -127,6 +168,7 @@
         .purchase-amount {
             font-weight: bold;
             color: #764ba2;
+            font-size: 16px;
         }
         
         .purchase-details {
@@ -135,24 +177,14 @@
             margin-top: 5px;
         }
         
-        .balances-section {
-            margin-top: 30px;
-        }
-        
-        .balances-section h3 {
-            color: #333;
-            margin-bottom: 15px;
-            margin-top: 25px;
-        }
-        
         .balance-item {
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 8px;
         }
         
         .balance-name {
@@ -169,94 +201,186 @@
             color: #dc3545;
         }
         
-        .budget-item {
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 8px;
+        .admin-section {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
         }
         
-        .budget-name {
-            font-weight: 500;
-            color: #333;
-            margin-bottom: 5px;
+        .admin-section h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 16px;
         }
         
-        .budget-bar {
-            background: #e9ecef;
-            border-radius: 3px;
-            height: 6px;
-            overflow: hidden;
-            margin-bottom: 5px;
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         
-        .budget-progress {
+        .btn-small {
+            padding: 8px 16px;
             background: #667eea;
-            height: 100%;
-            transition: width 0.3s;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.3s;
         }
         
-        .budget-progress.over-budget {
+        .btn-small:hover {
+            background: #5a6fd8;
+        }
+        
+        .btn-danger {
             background: #dc3545;
         }
         
-        .budget-text {
-            font-size: 12px;
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .loading {
+            text-align: center;
             color: #666;
+            padding: 20px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>💰 Budget Tracker</h1>
-        
-        <div id="syncInfo" class="sync-info">
-            <span id="pendingCount">Pending uploads: 0</span>
-            <br>
-            <span id="onlineStatus">Online</span>
+        <div class="tab-container">
+            <button class="tab active" onclick="switchTab(event, 'peanut')">🥜 Peanut</button>
+            <button class="tab" onclick="switchTab(event, 'robert')">👨‍💼 Robert</button>
+            <button class="tab" onclick="switchTab(event, 'admin')">⚙️ Admin</button>
         </div>
-        
-        <form id="purchaseForm">
-            <div class="form-group">
-                <label for="account">Account</label>
-                <select id="account" required>
-                    <option value="">Select account...</option>
-                </select>
+
+        <!-- Peanut Tab -->
+        <div id="peanut" class="tab-content active">
+            <h1>Peanut's Expenses</h1>
+            
+            <div id="peanutSyncInfo" class="sync-info">
+                <span id="peanutPendingCount">Pending uploads: 0</span>
+                <br>
+                <span id="peanutOnlineStatus">Checking connection...</span>
             </div>
             
-            <div class="form-group">
-                <label for="amount">Amount (R)</label>
-                <input type="number" id="amount" step="0.01" placeholder="0.00" required>
+            <form id="peanutPurchaseForm">
+                <div class="form-group">
+                    <label for="peanutAccount">Account</label>
+                    <select id="peanutAccount" required>
+                        <option value="">Select account...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="peanutAmount">Amount (R)</label>
+                    <input type="number" id="peanutAmount" step="0.01" placeholder="0.00" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="peanutCategory">Category</label>
+                    <select id="peanutCategory">
+                        <option value="">Select category...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="peanutDescription">Description</label>
+                    <input type="text" id="peanutDescription" placeholder="What was this for?">
+                </div>
+                
+                <button type="submit" class="submit-btn">Add Purchase</button>
+            </form>
+            
+            <div id="peanutStatus" class="status hidden"></div>
+            
+            <div class="data-section">
+                <h3>My Recent Purchases</h3>
+                <div id="peanutPurchases" class="loading">Loading...</div>
             </div>
-            
-            <div class="form-group">
-                <label for="category">Category</label>
-                <select id="category">
-                    <option value="">Select category...</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="description">Description</label>
-                <input type="text" id="description" placeholder="What was this for?">
-            </div>
-            
-            <button type="submit" class="submit-btn">Add Purchase</button>
-        </form>
-        
-        <div id="status" class="status" style="display: none;"></div>
-        
-        <div class="balances-section">
-            <h3>Account Balances</h3>
-            <div id="accountBalances"></div>
-            
-            <h3>Budget Status</h3>
-            <div id="budgetStatus"></div>
         </div>
-        
-        <div class="recent-purchases">
-            <h3>Recent Purchases</h3>
-            <div id="recentList"></div>
+
+        <!-- Robert Tab -->
+        <div id="robert" class="tab-content">
+            <h1>Robert's Expenses</h1>
+            
+            <div id="robertSyncInfo" class="sync-info">
+                <span id="robertPendingCount">Pending uploads: 0</span>
+                <br>
+                <span id="robertOnlineStatus">Checking connection...</span>
+            </div>
+            
+            <form id="robertPurchaseForm">
+                <div class="form-group">
+                    <label for="robertAccount">Account</label>
+                    <select id="robertAccount" required>
+                        <option value="">Select account...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="robertAmount">Amount (R)</label>
+                    <input type="number" id="robertAmount" step="0.01" placeholder="0.00" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="robertCategory">Category</label>
+                    <select id="robertCategory">
+                        <option value="">Select category...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="robertDescription">Description</label>
+                    <input type="text" id="robertDescription" placeholder="What was this for?">
+                </div>
+                
+                <button type="submit" class="submit-btn">Add Purchase</button>
+            </form>
+            
+            <div id="robertStatus" class="status hidden"></div>
+            
+            <div class="data-section">
+                <h3>My Recent Purchases</h3>
+                <div id="robertPurchases" class="loading">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Admin Tab -->
+        <div id="admin" class="tab-content">
+            <h1>Admin Dashboard</h1>
+            
+            <div class="admin-section">
+                <h4>Account Balances</h4>
+                <div id="adminAccountBalances" class="loading">Loading...</div>
+            </div>
+            
+            <div class="admin-section">
+                <h4>Budget Status</h4>
+                <div id="adminBudgetStatus" class="loading">Loading...</div>
+            </div>
+            
+            <div class="admin-section">
+                <h4>All Recent Purchases</h4>
+                <div id="adminAllPurchases" class="loading">Loading...</div>
+            </div>
+            
+            <div class="admin-section">
+                <h4>Quick Actions</h4>
+                <div class="btn-group">
+                    <button class="btn-small" onclick="refreshAllData()">🔄 Refresh Data</button>
+                    <button class="btn-small" onclick="exportData()">📊 Export Data</button>
+                    <button class="btn-small btn-danger" onclick="clearLocalData()">🗑️ Clear Local Data</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -272,133 +396,112 @@
         let isOnline = navigator.onLine;
         let accounts = [];
         let budgetCategories = [];
+        let currentTab = 'peanut';
         
-        // Update UI based on connection status
-        function updateOnlineStatus() {
-            const statusElement = document.getElementById('onlineStatus');
+        // Tab switching
+        function switchTab(evt, tabName) {
+            var i, tabContent, tabs;
+            
+            // Hide all tab content
+            tabContent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabContent.length; i++) {
+                tabContent[i].classList.remove("active");
+            }
+            
+            // Remove active class from all tabs
+            tabs = document.getElementsByClassName("tab");
+            for (i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove("active");
+            }
+            
+            // Show selected tab and mark button as active
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+            
+            currentTab = tabName;
+            
+            // Load data for the current tab
             if (isOnline) {
-                statusElement.textContent = 'Online - Will sync automatically';
-                statusElement.style.color = '#155724';
-            } else {
-                statusElement.textContent = 'Offline - Will sync when connected';
-                statusElement.style.color = '#856404';
+                loadDataForCurrentTab();
             }
         }
         
-        // Update pending count display
-        function updatePendingCount() {
-            const pending = JSON.parse(localStorage.getItem('pendingPurchases') || '[]');
-            document.getElementById('pendingCount').textContent = `Pending uploads: ${pending.length}`;
+        // Update online status for all tabs
+        function updateAllOnlineStatus() {
+            const statusElements = ['peanutOnlineStatus', 'robertOnlineStatus'];
+            const statusText = isOnline ? 'Online - Will sync automatically' : 'Offline - Will sync when connected';
+            const statusColor = isOnline ? '#155724' : '#856404';
+            
+            statusElements.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.textContent = statusText;
+                    element.style.color = statusColor;
+                }
+            });
         }
         
-        // Add purchase to local storage
-        function addPurchaseLocally(purchase) {
-            let purchases = JSON.parse(localStorage.getItem('pendingPurchases') || '[]');
+        // Update pending count for specific user
+        function updatePendingCount(user) {
+            const pending = JSON.parse(localStorage.getItem(`pendingPurchases_${user}`) || '[]');
+            const element = document.getElementById(`${user}PendingCount`);
+            if (element) {
+                element.textContent = `Pending uploads: ${pending.length}`;
+            }
+        }
+        
+        // Add purchase to local storage for specific user
+        function addPurchaseLocally(purchase, user) {
+            let purchases = JSON.parse(localStorage.getItem(`pendingPurchases_${user}`) || '[]');
             purchase.id = Date.now();
             purchase.timestamp = new Date().toISOString();
+            purchase.user = user;
             purchases.push(purchase);
-            localStorage.setItem('pendingPurchases', JSON.stringify(purchases));
+            localStorage.setItem(`pendingPurchases_${user}`, JSON.stringify(purchases));
             
-            // Also add to recent purchases for immediate display
-            let recent = JSON.parse(localStorage.getItem('recentPurchases') || '[]');
-            recent.unshift(purchase);
-            recent = recent.slice(0, 10); // Keep only last 10
-            localStorage.setItem('recentPurchases', JSON.stringify(recent));
-            
-            updatePendingCount();
-            displayRecentPurchases();
+            updatePendingCount(user);
+            loadDataForCurrentTab();
         }
         
-        // Display recent purchases
-        function displayRecentPurchases() {
-            const recent = JSON.parse(localStorage.getItem('recentPurchases') || '[]');
-            const container = document.getElementById('recentList');
-            
-            if (recent.length === 0) {
-                container.innerHTML = '<p style="color: #666; text-align: center;">No recent purchases</p>';
-                return;
-            }
-            
-            container.innerHTML = recent.map(purchase => `
-                <div class="purchase-item">
-                    <div class="purchase-amount">R${parseFloat(purchase.amount).toFixed(2)}</div>
-                    <div class="purchase-details">
-                        ${purchase.category} ${purchase.category && purchase.description ? '•' : ''} ${purchase.description}
-                        <br><small>${new Date(purchase.timestamp).toLocaleString()}</small>
-                    </div>
-                </div>
-            `).join('');
-        }
-        
-        // Sync purchases with server
-        async function syncPurchases() {
-            if (!isOnline) return;
-            
-            const pending = JSON.parse(localStorage.getItem('pendingPurchases') || '[]');
-            if (pending.length === 0) return;
-            
-            try {
-                const response = await fetch('/sync_purchases', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(pending)
-                });
-                
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    localStorage.removeItem('pendingPurchases');
-                    updatePendingCount();
-                    showStatus(`✅ Synced ${result.synced} purchases!`, 'success');
-                } else {
-                    showStatus(`❌ Sync failed: ${result.message}`, 'error');
-                }
-            } catch (error) {
-                console.error('Sync error:', error);
-                showStatus('❌ Sync failed - will retry later', 'error');
-            }
-        }
-        
-        // Show status message
-        function showStatus(message, type) {
-            const statusDiv = document.getElementById('status');
-            statusDiv.textContent = message;
-            statusDiv.className = `status ${type}`;
-            statusDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 3000);
-        }
-        
-        // Load accounts and budget categories
+        // Load accounts and categories
         async function loadAccountsAndBudgets() {
             if (!isOnline) return;
             
             try {
-                // Load accounts
-                const accountsResponse = await fetch('/get_accounts');
-                accounts = await accountsResponse.json();
+                const [accountsResponse, budgetsResponse] = await Promise.all([
+                    fetch('/get_accounts'),
+                    fetch('/get_budget_categories')
+                ]);
                 
-                // Load budget categories
-                const budgetsResponse = await fetch('/get_budget_categories');
-                budgetCategories = await budgetsResponse.json();
-                
-                // Update dropdowns
-                updateAccountDropdown();
-                updateCategoryDropdown();
-                updateBalanceDisplays();
+                if (accountsResponse.ok && budgetsResponse.ok) {
+                    accounts = await accountsResponse.json();
+                    budgetCategories = await budgetsResponse.json();
+                    
+                    updateAllDropdowns();
+                    updateAdminDashboard();
+                } else {
+                    throw new Error('Failed to fetch data');
+                }
                 
             } catch (error) {
                 console.error('Error loading data:', error);
+                showStatus('Error loading account data', 'error', currentTab);
             }
         }
         
-        // Update account dropdown
-        function updateAccountDropdown() {
-            const accountSelect = document.getElementById('account');
+        // Update dropdowns for all tabs
+        function updateAllDropdowns() {
+            ['peanut', 'robert'].forEach(user => {
+                updateAccountDropdown(user);
+                updateCategoryDropdown(user);
+            });
+        }
+        
+        // Update account dropdown for specific user
+        function updateAccountDropdown(user) {
+            const accountSelect = document.getElementById(`${user}Account`);
+            if (!accountSelect) return;
+            
             accountSelect.innerHTML = '<option value="">Select account...</option>';
             
             accounts.forEach(account => {
@@ -409,9 +512,11 @@
             });
         }
         
-        // Update category dropdown
-        function updateCategoryDropdown() {
-            const categorySelect = document.getElementById('category');
+        // Update category dropdown for specific user
+        function updateCategoryDropdown(user) {
+            const categorySelect = document.getElementById(`${user}Category`);
+            if (!categorySelect) return;
+            
             categorySelect.innerHTML = '<option value="">Select category...</option>';
             
             budgetCategories.forEach(category => {
@@ -422,119 +527,317 @@
             });
         }
         
-        // Update balance displays
-        function updateBalanceDisplays() {
-            // Account balances
-            const accountBalancesDiv = document.getElementById('accountBalances');
-            if (accounts.length === 0) {
-                accountBalancesDiv.innerHTML = '<p style="color: #666; text-align: center;">No account data</p>';
+        // Load data for current tab
+        async function loadDataForCurrentTab() {
+            if (currentTab === 'admin') {
+                updateAdminDashboard();
             } else {
-                accountBalancesDiv.innerHTML = accounts.map(account => `
-                    <div class="balance-item">
-                        <span class="balance-name">${account.name}</span>
-                        <span class="balance-amount ${account.balance < 0 ? 'negative' : ''}">
-                            R${account.balance.toFixed(2)}
-                        </span>
-                    </div>
-                `).join('');
-            }
-            
-            // Budget status
-            const budgetStatusDiv = document.getElementById('budgetStatus');
-            if (budgetCategories.length === 0) {
-                budgetStatusDiv.innerHTML = '<p style="color: #666; text-align: center;">No budget data</p>';
-            } else {
-                budgetStatusDiv.innerHTML = budgetCategories
-                    .filter(cat => cat.budgeted_amount > 0)
-                    .map(category => {
-                        const spent = Math.abs(category.current_balance);
-                        const percentage = category.budgeted_amount > 0 ? (spent / category.budgeted_amount) * 100 : 0;
-                        const isOverBudget = spent > category.budgeted_amount;
-                        
-                        return `
-                            <div class="budget-item">
-                                <div class="budget-name">${category.name}</div>
-                                <div class="budget-bar">
-                                    <div class="budget-progress ${isOverBudget ? 'over-budget' : ''}" 
-                                         style="width: ${Math.min(percentage, 100)}%"></div>
-                                </div>
-                                <div class="budget-text">
-                                    R${spent.toFixed(2)} of R${category.budgeted_amount.toFixed(2)} 
-                                    (R${category.remaining.toFixed(2)} remaining)
-                                </div>
-                            </div>
-                        `;
-                    }).join('') || '<p style="color: #666; text-align: center;">No budgets set</p>';
+                await loadUserPurchases(currentTab);
             }
         }
         
-        // Form submission handler
-        document.getElementById('purchaseForm').addEventListener('submit', function(e) {
-            e.preventDefault();
+        // Load purchases for specific user
+        async function loadUserPurchases(user) {
+            const container = document.getElementById(`${user}Purchases`);
+            if (!container) return;
             
-            const accountId = document.getElementById('account').value;
-            const amount = document.getElementById('amount').value;
-            const category = document.getElementById('category').value;
-            const description = document.getElementById('description').value;
-            
-            if (!amount) {
-                showStatus('Please enter an amount', 'error');
+            try {
+                if (isOnline) {
+                    const response = await fetch('/get_purchases');
+                    if (response.ok) {
+                        const purchases = await response.json();
+                        
+                        // Filter purchases for this user
+                        const userPurchases = purchases.filter(p => 
+                            p.user && p.user.toLowerCase().includes(user.toLowerCase())
+                        ).slice(0, 10);
+                        
+                        displayPurchases(userPurchases, container);
+                    } else {
+                        container.innerHTML = '<p style="color: #dc3545;">Error loading purchases</p>';
+                    }
+                } else {
+                    // Show local purchases when offline
+                    const localPurchases = JSON.parse(localStorage.getItem(`pendingPurchases_${user}`) || '[]');
+                    displayPurchases(localPurchases, container);
+                }
+            } catch (error) {
+                console.error('Error loading purchases:', error);
+                container.innerHTML = '<p style="color: #dc3545;">Error loading purchases</p>';
+            }
+        }
+        
+        // Display purchases in container
+        function displayPurchases(purchases, container) {
+            if (purchases.length === 0) {
+                container.innerHTML = '<p style="color: #666; text-align: center;">No purchases found</p>';
                 return;
             }
             
-            if (!accountId) {
-                showStatus('Please select an account', 'error');
+            container.innerHTML = purchases.map(purchase => {
+                const date = purchase.date || purchase.timestamp;
+                const formattedDate = date ? new Date(date).toLocaleString() : 'Unknown date';
+                
+                return `
+                    <div class="data-item">
+                        <div class="purchase-amount">R${parseFloat(purchase.amount).toFixed(2)}</div>
+                        <div class="purchase-details">
+                            ${purchase.category || 'No category'} ${purchase.category && purchase.description ? '•' : ''} ${purchase.description || ''}
+                            <br><small>${formattedDate}</small>
+                            ${purchase.account_name ? `<br><small>Account: ${purchase.account_name}</small>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Update admin dashboard
+        async function updateAdminDashboard() {
+            updateAccountBalances();
+            updateBudgetStatus();
+            await loadAllPurchases();
+        }
+        
+        // Update account balances display
+        function updateAccountBalances() {
+            const container = document.getElementById('adminAccountBalances');
+            if (!container) return;
+            
+            if (accounts.length === 0) {
+                container.innerHTML = '<p style="color: #666;">No account data available</p>';
                 return;
             }
             
-            const purchase = {
-                account_id: parseInt(accountId),
-                amount: parseFloat(amount),
-                category: category,
-                description: description
-            };
+            container.innerHTML = accounts.map(account => `
+                <div class="balance-item">
+                    <span class="balance-name">${account.name}</span>
+                    <span class="balance-amount ${account.balance < 0 ? 'negative' : ''}">
+                        R${account.balance.toFixed(2)}
+                    </span>
+                </div>
+            `).join('');
+        }
+        
+        // Update budget status display
+        function updateBudgetStatus() {
+            const container = document.getElementById('adminBudgetStatus');
+            if (!container) return;
             
-            addPurchaseLocally(purchase);
-            showStatus('💾 Purchase saved locally!', 'success');
+            if (budgetCategories.length === 0) {
+                container.innerHTML = '<p style="color: #666;">No budget data available</p>';
+                return;
+            }
             
-            // Reset form
-            this.reset();
+            container.innerHTML = budgetCategories
+                .filter(cat => cat.budgeted_amount > 0)
+                .map(category => {
+                    const spent = Math.abs(category.current_balance || 0);
+                    const remaining = category.budgeted_amount - spent;
+                    const percentage = category.budgeted_amount > 0 ? (spent / category.budgeted_amount) * 100 : 0;
+                    
+                    return `
+                        <div class="balance-item">
+                            <div>
+                                <div class="balance-name">${category.name}</div>
+                                <small>R${spent.toFixed(2)} of R${category.budgeted_amount.toFixed(2)} (${percentage.toFixed(1)}%)</small>
+                            </div>
+                            <span class="balance-amount ${remaining < 0 ? 'negative' : ''}">
+                                R${remaining.toFixed(2)} left
+                            </span>
+                        </div>
+                    `;
+                }).join('') || '<p style="color: #666;">No budgets set</p>';
+        }
+        
+        // Load all purchases for admin view
+        async function loadAllPurchases() {
+            const container = document.getElementById('adminAllPurchases');
+            if (!container) return;
             
-            // Try to sync immediately if online
-            if (isOnline) {
-                setTimeout(syncPurchases, 1000);
+            try {
+                if (isOnline) {
+                    const response = await fetch('/get_purchases');
+                    if (response.ok) {
+                        const purchases = await response.json();
+                        displayPurchases(purchases.slice(0, 20), container);
+                    } else {
+                        container.innerHTML = '<p style="color: #dc3545;">Error loading purchases</p>';
+                    }
+                } else {
+                    container.innerHTML = '<p style="color: #666;">Offline - cannot load all purchases</p>';
+                }
+            } catch (error) {
+                console.error('Error loading all purchases:', error);
+                container.innerHTML = '<p style="color: #dc3545;">Error loading purchases</p>';
+            }
+        }
+        
+        // Sync purchases for specific user
+        async function syncPurchases(user) {
+            if (!isOnline) return;
+            
+            const pending = JSON.parse(localStorage.getItem(`pendingPurchases_${user}`) || '[]');
+            if (pending.length === 0) return;
+            
+            try {
+                // Add user name prefix to purchases
+                const purchasesWithUser = pending.map(p => ({
+                    ...p,
+                    user_name: user === 'peanut' ? 'Peanut' : 'Robert'
+                }));
+                
+                const response = await fetch('/sync_purchases', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(purchasesWithUser)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    localStorage.removeItem(`pendingPurchases_${user}`);
+                    updatePendingCount(user);
+                    showStatus(`✅ Synced ${result.synced} purchases!`, 'success', user);
+                    loadDataForCurrentTab();
+                } else {
+                    showStatus(`❌ Sync failed: ${result.message}`, 'error', user);
+                }
+            } catch (error) {
+                console.error('Sync error:', error);
+                showStatus('❌ Sync failed - will retry later', 'error', user);
+            }
+        }
+        
+        // Show status message
+        function showStatus(message, type, user) {
+            const statusDiv = document.getElementById(`${user}Status`);
+            if (statusDiv) {
+                statusDiv.textContent = message;
+                statusDiv.className = `status ${type}`;
+                statusDiv.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    statusDiv.classList.add('hidden');
+                }, 3000);
+            }
+        }
+        
+        // Form submission handlers
+        ['peanut', 'robert'].forEach(user => {
+            const form = document.getElementById(`${user}PurchaseForm`);
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const accountId = document.getElementById(`${user}Account`).value;
+                    const amount = document.getElementById(`${user}Amount`).value;
+                    const category = document.getElementById(`${user}Category`).value;
+                    const description = document.getElementById(`${user}Description`).value;
+                    
+                    if (!amount) {
+                        showStatus('Please enter an amount', 'error', user);
+                        return;
+                    }
+                    
+                    if (!accountId) {
+                        showStatus('Please select an account', 'error', user);
+                        return;
+                    }
+                    
+                    const purchase = {
+                        account_id: parseInt(accountId),
+                        amount: parseFloat(amount),
+                        category: category,
+                        description: description
+                    };
+                    
+                    addPurchaseLocally(purchase, user);
+                    showStatus('💾 Purchase saved locally!', 'success', user);
+                    
+                    // Reset form
+                    this.reset();
+                    
+                    // Try to sync immediately if online
+                    if (isOnline) {
+                        setTimeout(() => syncPurchases(user), 1000);
+                    }
+                });
             }
         });
+        
+        // Admin functions
+        function refreshAllData() {
+            loadAccountsAndBudgets();
+            loadDataForCurrentTab();
+            showStatus('Data refreshed!', 'success', 'admin');
+        }
+        
+        function exportData() {
+            const data = {
+                accounts: accounts,
+                budgetCategories: budgetCategories,
+                localPeanutPurchases: JSON.parse(localStorage.getItem('pendingPurchases_peanut') || '[]'),
+                localRobertPurchases: JSON.parse(localStorage.getItem('pendingPurchases_robert') || '[]')
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `budget-data-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function clearLocalData() {
+            if (confirm('Are you sure you want to clear all local data? This will delete any pending purchases that haven\'t been synced yet.')) {
+                localStorage.removeItem('pendingPurchases_peanut');
+                localStorage.removeItem('pendingPurchases_robert');
+                updatePendingCount('peanut');
+                updatePendingCount('robert');
+                loadDataForCurrentTab();
+                alert('Local data cleared!');
+            }
+        }
         
         // Network event listeners
         window.addEventListener('online', () => {
             isOnline = true;
-            updateOnlineStatus();
+            updateAllOnlineStatus();
             loadAccountsAndBudgets();
-            syncPurchases();
+            syncPurchases('peanut');
+            syncPurchases('robert');
         });
         
         window.addEventListener('offline', () => {
             isOnline = false;
-            updateOnlineStatus();
+            updateAllOnlineStatus();
         });
         
         // Initialize
-        updateOnlineStatus();
-        updatePendingCount();
-        displayRecentPurchases();
+        updateAllOnlineStatus();
+        updatePendingCount('peanut');
+        updatePendingCount('robert');
         
-        // Load data on page load if online
+        // Load initial data
         if (isOnline) {
             loadAccountsAndBudgets();
-            setTimeout(syncPurchases, 2000);
+            setTimeout(() => {
+                syncPurchases('peanut');
+                syncPurchases('robert');
+            }, 2000);
         }
         
         // Auto-sync every 30 seconds when online
         setInterval(() => {
             if (isOnline) {
-                syncPurchases();
-                loadAccountsAndBudgets(); // Refresh balances
+                syncPurchases('peanut');
+                syncPurchases('robert');
+                if (currentTab === 'admin') {
+                    loadAccountsAndBudgets();
+                }
             }
         }, 30000);
     </script>
