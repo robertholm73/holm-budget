@@ -423,8 +423,13 @@
                     currentTab = tabName;
                     
                     // Load data for the current tab
+                    console.log('Tab switched to:', tabName, 'calling loadDataForCurrentTab');
                     if (isOnline) {
                         loadDataForCurrentTab();
+                    } else {
+                        // Even offline, update the dropdowns
+                        updateAccountDropdown(currentTab);
+                        updateCategoryDropdown(currentTab);
                     }
                 } else {
                     console.error('Tab not found:', tabName);
@@ -511,12 +516,13 @@
             }
         }
         
-        // Update dropdowns for all tabs
+        // Update dropdowns for all tabs (called once on page load)
         function updateAllDropdowns() {
-            ['peanut', 'robert'].forEach(user => {
-                updateAccountDropdown(user);
-                updateCategoryDropdown(user);
-            });
+            console.log('updateAllDropdowns called, currentTab:', currentTab);
+            
+            // Only update the current tab initially
+            updateAccountDropdown(currentTab);
+            updateCategoryDropdown(currentTab);
             
             // Also load data for the current tab
             loadDataForCurrentTab();
@@ -582,10 +588,12 @@
         
         // Load data for current tab
         async function loadDataForCurrentTab() {
+            console.log('loadDataForCurrentTab called for:', currentTab);
             if (currentTab === 'admin') {
                 updateAdminDashboard();
             } else {
                 // Update dropdowns for the current user
+                console.log('Updating dropdowns for user:', currentTab);
                 updateAccountDropdown(currentTab);
                 updateCategoryDropdown(currentTab);
                 // Load purchases for the current user
