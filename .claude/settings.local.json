@@ -28,7 +28,8 @@
       "Bash(git add:*)",
       "WebFetch(domain:holm-budget-qvsg.onrender.com)",
       "Bash(env)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }
