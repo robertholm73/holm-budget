@@ -10,6 +10,16 @@ import os
 from datetime import datetime
 from decimal import Decimal
 
+# Load environment variables from .env file
+from pathlib import Path
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    with open(env_file) as f:
+        for line in f:
+            if '=' in line and not line.strip().startswith('#'):
+                key, value = line.strip().split('=', 1)
+                os.environ[key] = value
+
 class BudgetDesktopApp(QMainWindow):
     def __init__(self):
         super().__init__()
