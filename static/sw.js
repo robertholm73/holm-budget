@@ -1,4 +1,4 @@
-const CACHE_NAME = 'budget-tracker-v1';
+const CACHE_NAME = 'holm-budget-v1';
 const urlsToCache = [
   '/',
   '/manifest.json'

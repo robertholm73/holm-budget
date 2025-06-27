@@ -4,9 +4,12 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
                                QTableWidgetItem, QPushButton, QLineEdit, QMessageBox,
                                QComboBox, QDoubleSpinBox, QDialog, QFormLayout, QDialogButtonBox,
                                QTextEdit, QDateTimeEdit)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 import pg8000
 import os
+import signal
+import threading
+import time
 from datetime import datetime
 from decimal import Decimal
 
@@ -20,6 +23,86 @@ if env_file.exists():
                 key, value = line.strip().split('=', 1)
                 os.environ[key] = value
 
+
+
+class ConnectionManager:
+    def __init__(self, database_url):
+        self.database_url = database_url
+        self._connection = None
+        
+    def get_connection_with_timeout(self, timeout_seconds=5):
+        """Get database connection with aggressive timeout"""
+        result = [None]
+        exception = [None]
+        
+        def connect_thread():
+            try:
+                import urllib.parse
+                parsed = urllib.parse.urlparse(self.database_url)
+                
+                # Close existing connection if it exists
+                if self._connection:
+                    try:
+                        self._connection.close()
+                    except:
+                        pass
+                
+                print(f"Attempting database connection...")
+                start_time = time.time()
+                
+                # Create new connection with timeout settings
+                conn = pg8000.connect(
+                    host=parsed.hostname,
+                    database=parsed.path[1:],
+                    user=parsed.username,
+                    password=parsed.password,
+                    port=parsed.port or 5432,
+                    ssl_context=True,
+                    timeout=3  # 3 second connection timeout
+                )
+                
+                # Set aggressive query timeout
+                cur = conn.cursor()
+                cur.execute("SET statement_timeout = '5s'")  # 5 second query timeout
+                cur.execute("SET lock_timeout = '3s'")      # 3 second lock timeout
+                cur.execute("SET idle_in_transaction_session_timeout = '10s'")
+                conn.commit()
+                
+                elapsed = time.time() - start_time
+                print(f"Database connection established in {elapsed:.2f}s")
+                
+                result[0] = conn
+                
+            except Exception as e:
+                exception[0] = e
+                print(f"Database connection failed: {e}")
+        
+        # Run connection in separate thread with timeout
+        thread = threading.Thread(target=connect_thread)
+        thread.daemon = True
+        thread.start()
+        
+        # Wait for connection with timeout
+        thread.join(timeout_seconds)
+        
+        if thread.is_alive():
+            print(f"Database connection timed out after {timeout_seconds}s")
+            raise Exception(f"Database connection timed out after {timeout_seconds} seconds")
+        
+        if exception[0]:
+            raise exception[0]
+            
+        if result[0] is None:
+            raise Exception("Failed to establish database connection")
+            
+        self._connection = result[0]
+        return self._connection
+        
+    def get_connection(self):
+        """Legacy method for backward compatibility"""
+        return self.get_connection_with_timeout()
+
+
 class BudgetDesktopApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -31,21 +114,17 @@ class BudgetDesktopApp(QMainWindow):
         if not self.database_url:
             QMessageBox.critical(self, "Error", "DATABASE_URL environment variable not set")
             return
+        
+        # Use connection manager instead of creating new connections
+        self.conn_manager = ConnectionManager(self.database_url)
             
         self.setup_ui()
         self.load_data()
     
+
     def get_db_connection(self):
-        import urllib.parse
-        parsed = urllib.parse.urlparse(self.database_url)
-        return pg8000.connect(
-            host=parsed.hostname,
-            database=parsed.path[1:],
-            user=parsed.username,
-            password=parsed.password,
-            port=parsed.port or 5432,
-            ssl_context=True
-        )
+        return self.conn_manager.get_connection()
+    
     
     def setup_ui(self):
         # Create tab widget
@@ -116,6 +195,12 @@ class BudgetDesktopApp(QMainWindow):
         update_btn = QPushButton("Update Balance")
         update_btn.clicked.connect(self.update_account_balance)
         controls_layout.addWidget(update_btn)
+        
+        # Add cleanup button
+        cleanup_btn = QPushButton("Cleanup Bad Data")
+        cleanup_btn.clicked.connect(self.cleanup_bad_data)
+        cleanup_btn.setStyleSheet("background-color: #ff6b6b; color: white;")
+        controls_layout.addWidget(cleanup_btn)
         
         layout.addLayout(controls_layout)
     
@@ -208,59 +293,109 @@ class BudgetDesktopApp(QMainWindow):
             conn = self.get_db_connection()
             cur = conn.cursor()
             
-            # Load accounts
-            cur.execute('SELECT id, name, balance FROM accounts ORDER BY name')
-            accounts = cur.fetchall()
+            # Load accounts with timeout protection
+            try:
+                cur.execute('SELECT id, name, balance FROM accounts ORDER BY name')
+                accounts = cur.fetchall()
+                
+                # Populate accounts table
+                self.accounts_table.setRowCount(len(accounts))
+                for row, account in enumerate(accounts):
+                    self.accounts_table.setItem(row, 0, QTableWidgetItem(str(account[0])))
+                    self.accounts_table.setItem(row, 1, QTableWidgetItem(str(account[1])))
+                    self.accounts_table.setItem(row, 2, QTableWidgetItem(f"R{account[2]:.2f}"))
+            except Exception as e:
+                QMessageBox.warning(self, "Data Load Warning", f"Failed to load accounts: {str(e)}")
+                self.accounts_table.setRowCount(0)
             
-            # Populate accounts table
-            self.accounts_table.setRowCount(len(accounts))
-            for row, account in enumerate(accounts):
-                self.accounts_table.setItem(row, 0, QTableWidgetItem(str(account[0])))
-                self.accounts_table.setItem(row, 1, QTableWidgetItem(str(account[1])))
-                self.accounts_table.setItem(row, 2, QTableWidgetItem(f"R{account[2]:.2f}"))
+            # Load budget categories with timeout protection
+            try:
+                cur.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
+                categories = cur.fetchall()
+                
+                # Populate budget table
+                self.budget_table.setRowCount(len(categories))
+                for row, cat in enumerate(categories):
+                    budgeted = float(cat[2])
+                    spent = abs(float(cat[3]))  # current_balance is negative when money is spent
+                    remaining = budgeted - spent
+                    self.budget_table.setItem(row, 0, QTableWidgetItem(str(cat[0])))
+                    self.budget_table.setItem(row, 1, QTableWidgetItem(str(cat[1])))
+                    self.budget_table.setItem(row, 2, QTableWidgetItem(f"R{budgeted:.2f}"))
+                    self.budget_table.setItem(row, 3, QTableWidgetItem(f"R{spent:.2f}"))
+                    self.budget_table.setItem(row, 4, QTableWidgetItem(f"R{remaining:.2f}"))
+            except Exception as e:
+                QMessageBox.warning(self, "Data Load Warning", f"Failed to load budget categories: {str(e)}")
+                self.budget_table.setRowCount(0)
             
-            # Load budget categories
-            cur.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
-            categories = cur.fetchall()
-            
-            # Populate budget table
-            self.budget_table.setRowCount(len(categories))
-            for row, cat in enumerate(categories):
-                budgeted = float(cat[2])
-                spent = abs(float(cat[3]))  # current_balance is negative when money is spent
-                remaining = budgeted - spent
-                self.budget_table.setItem(row, 0, QTableWidgetItem(str(cat[0])))
-                self.budget_table.setItem(row, 1, QTableWidgetItem(str(cat[1])))
-                self.budget_table.setItem(row, 2, QTableWidgetItem(f"R{budgeted:.2f}"))
-                self.budget_table.setItem(row, 3, QTableWidgetItem(f"R{spent:.2f}"))
-                self.budget_table.setItem(row, 4, QTableWidgetItem(f"R{remaining:.2f}"))
-            
-            # Load recent purchases
-            cur.execute('''
-                SELECT p.id, p.user_name, p.amount, a.name, bc.name, p.description, p.date
-                FROM purchases p 
-                LEFT JOIN accounts a ON p.account_id = a.id
-                LEFT JOIN budget_categories bc ON p.budget_category_id = bc.id
-                ORDER BY p.date DESC LIMIT 50
-            ''')
-            purchases = cur.fetchall()
-            
-            # Populate purchases table
-            self.purchases_table.setRowCount(len(purchases))
-            for row, purchase in enumerate(purchases):
-                formatted_date = purchase[6].strftime("%Y-%m-%d %H:%M") if purchase[6] else ""
-                self.purchases_table.setItem(row, 0, QTableWidgetItem(str(purchase[0])))
-                self.purchases_table.setItem(row, 1, QTableWidgetItem(str(purchase[1])))
-                self.purchases_table.setItem(row, 2, QTableWidgetItem(f"R{purchase[2]:.2f}"))
-                self.purchases_table.setItem(row, 3, QTableWidgetItem(purchase[3] or "N/A"))
-                self.purchases_table.setItem(row, 4, QTableWidgetItem(purchase[4] or "N/A"))
-                self.purchases_table.setItem(row, 5, QTableWidgetItem(purchase[5] or ""))
-                self.purchases_table.setItem(row, 6, QTableWidgetItem(formatted_date))
+            # Load recent purchases with timeout protection
+            try:
+                cur.execute('''
+                    SELECT p.id, p.user_name, p.amount, a.name, bc.name, p.description, p.date
+                    FROM purchases p 
+                    LEFT JOIN accounts a ON p.account_id = a.id
+                    LEFT JOIN budget_categories bc ON p.budget_category_id = bc.id
+                    ORDER BY p.date DESC LIMIT 50
+                ''')
+                purchases = cur.fetchall()
+                
+                # Populate purchases table
+                self.purchases_table.setRowCount(len(purchases))
+                for row, purchase in enumerate(purchases):
+                    formatted_date = purchase[6].strftime("%Y-%m-%d %H:%M") if purchase[6] else ""
+                    self.purchases_table.setItem(row, 0, QTableWidgetItem(str(purchase[0])))
+                    self.purchases_table.setItem(row, 1, QTableWidgetItem(str(purchase[1])))
+                    self.purchases_table.setItem(row, 2, QTableWidgetItem(f"R{purchase[2]:.2f}"))
+                    self.purchases_table.setItem(row, 3, QTableWidgetItem(purchase[3] or "N/A"))
+                    self.purchases_table.setItem(row, 4, QTableWidgetItem(purchase[4] or "N/A"))
+                    self.purchases_table.setItem(row, 5, QTableWidgetItem(purchase[5] or ""))
+                    self.purchases_table.setItem(row, 6, QTableWidgetItem(formatted_date))
+            except Exception as e:
+                QMessageBox.warning(self, "Data Load Warning", f"Failed to load purchases: {str(e)}")
+                self.purchases_table.setRowCount(0)
             
             conn.close()
             
         except Exception as e:
-            QMessageBox.critical(self, "Database Error", f"Failed to load data: {str(e)}")
+            QMessageBox.critical(self, "Database Connection Error", f"Failed to connect to database: {str(e)}\n\nTry refreshing the data again.")
+    
+    def cleanup_bad_data(self):
+        """Clean up accounts with generic/empty names"""
+        reply = QMessageBox.question(self, "Cleanup Database", 
+                                   "This will delete accounts with names like 'Bank Account X' and zero balances. Continue?",
+                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            try:
+                conn = self.get_db_connection()
+                cur = conn.cursor()
+                
+                # Delete accounts with generic names and zero balance
+                cur.execute('''
+                    DELETE FROM accounts 
+                    WHERE (name LIKE 'Bank Account %' OR name LIKE 'Account %' OR name = '') 
+                    AND balance = 0
+                ''')
+                deleted_accounts = cur.rowcount
+                
+                # Delete empty budget categories
+                cur.execute('''
+                    DELETE FROM budget_categories 
+                    WHERE (name = '' OR name IS NULL) 
+                    AND budgeted_amount = 0 
+                    AND current_balance = 0
+                ''')
+                deleted_categories = cur.rowcount
+                
+                conn.commit()
+                conn.close()
+                
+                self.load_data()
+                QMessageBox.information(self, "Cleanup Complete", 
+                                      f"Deleted {deleted_accounts} accounts and {deleted_categories} categories")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Cleanup Error", f"Failed to cleanup: {str(e)}")
     
     def update_account_balance(self):
         selected_row = self.accounts_table.currentRow()
@@ -402,12 +537,18 @@ class BudgetDesktopApp(QMainWindow):
                 QMessageBox.critical(self, "Database Error", f"Failed to delete account: {str(e)}")
     
     def transfer_money(self):
-        # Get all accounts for the transfer dialog
+        # Get all accounts for the transfer dialog with timeout protection
         try:
             conn = self.get_db_connection()
             cur = conn.cursor()
-            cur.execute('SELECT id, name, balance FROM accounts ORDER BY name')
-            accounts = cur.fetchall()
+            
+            try:
+                cur.execute('SELECT id, name, balance FROM accounts ORDER BY name')
+                accounts = cur.fetchall()
+            except Exception as e:
+                QMessageBox.critical(self, "Database Timeout", f"Failed to load accounts for transfer: {str(e)}")
+                return
+                
             conn.close()
             
             if len(accounts) < 2:
@@ -531,47 +672,93 @@ class BudgetDesktopApp(QMainWindow):
     
     # Purchase management methods
     def add_purchase(self):
-        # Get accounts and categories for dropdowns
+        # Use cached data from load_data() instead of making new database calls
+        print("Starting add_purchase - using cached data...")
+        start_time = time.time()
+        
         try:
-            conn = self.get_db_connection()
-            cur = conn.cursor()
-            cur.execute('SELECT id, name FROM accounts ORDER BY name')
-            accounts = cur.fetchall()
-            cur.execute('SELECT id, name FROM budget_categories ORDER BY name')
-            categories = cur.fetchall()
-            conn.close()
+            # Extract account data from the accounts table
+            accounts = []
+            for row in range(self.accounts_table.rowCount()):
+                account_id = int(self.accounts_table.item(row, 0).text())
+                account_name = self.accounts_table.item(row, 1).text()
+                accounts.append((account_id, account_name))
             
+            # Extract category data from the budget table  
+            categories = []
+            for row in range(self.budget_table.rowCount()):
+                category_id = int(self.budget_table.item(row, 0).text())
+                category_name = self.budget_table.item(row, 1).text()
+                categories.append((category_id, category_name))
+            
+            elapsed = time.time() - start_time
+            print(f"Cached data extracted in {elapsed:.2f}s - {len(accounts)} accounts, {len(categories)} categories")
+            
+            print("Creating PurchaseDialog...")
+            dialog_start = time.time()
             dialog = PurchaseDialog(self, accounts, categories)
-            if dialog.exec() == QDialog.Accepted:
-                data = dialog.get_data()
-                
-                conn = self.get_db_connection()
-                cur = conn.cursor()
-                
-                # Insert purchase
-                cur.execute('''
-                    INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                ''', (data['user'], data['amount'], data['account_id'], data['category_id'], 
-                      data['description'], data['date']))
-                
-                # Update account balance
-                if data['account_id']:
-                    cur.execute('UPDATE accounts SET balance = balance - %s WHERE id = %s', 
-                               (data['amount'], data['account_id']))
-                
-                # Update budget category balance
-                if data['category_id']:
-                    cur.execute('UPDATE budget_categories SET current_balance = current_balance - %s WHERE id = %s', 
-                               (data['amount'], data['category_id']))
-                
-                conn.commit()
-                conn.close()
-                self.load_data()
-                QMessageBox.information(self, "Success", "Purchase added successfully!")
+            dialog_elapsed = time.time() - dialog_start
+            print(f"PurchaseDialog created in {dialog_elapsed:.2f}s")
+            
+            print("Showing dialog...")
+            show_start = time.time()
+            
+            # Use non-modal approach for WSL2 compatibility
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            
+            # Connect to handle result when dialog finishes
+            def handle_result():
+                show_elapsed = time.time() - show_start
+                print(f"Dialog interaction completed in {show_elapsed:.2f}s")
+                self.process_purchase_result(dialog)
+            
+            dialog.accepted.connect(handle_result)
+            
+            show_elapsed = time.time() - show_start
+            print(f"Dialog shown in {show_elapsed:.2f}s")
+            return  # Don't block the main thread
                 
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Failed to add purchase: {str(e)}")
+    
+    def process_purchase_result(self, dialog):
+        """Process the purchase dialog result asynchronously"""
+        try:
+            data = dialog.get_data()
+            
+            conn = self.get_db_connection()
+            cur = conn.cursor()
+            
+            # Insert purchase
+            cur.execute('''
+                INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (data['user'], data['amount'], data['account_id'], data['category_id'], 
+                  data['description'], data['date']))
+            
+            # Update account balance
+            if data['account_id']:
+                cur.execute('UPDATE accounts SET balance = balance - %s WHERE id = %s', 
+                           (data['amount'], data['account_id']))
+            
+            # Update budget category balance
+            if data['category_id']:
+                cur.execute('UPDATE budget_categories SET current_balance = current_balance - %s WHERE id = %s', 
+                           (data['amount'], data['category_id']))
+            
+            conn.commit()
+            conn.close()
+            self.load_data()
+            QMessageBox.information(self, "Success", "Purchase added successfully!")
+            
+            # Close the dialog
+            dialog.close()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Failed to add purchase: {str(e)}")
+            dialog.close()
     
     def delete_purchase(self):
         selected_row = self.purchases_table.currentRow()
@@ -617,7 +804,7 @@ class BudgetDesktopApp(QMainWindow):
                 QMessageBox.critical(self, "Database Error", f"Failed to delete purchase: {str(e)}")
 
 
-# Dialog classes
+# Dialog classes - THESE NEED TO BE AT THE END, AFTER THE MAIN CLASS
 class AccountDialog(QDialog):
     def __init__(self, parent, name="", account_type="bank", balance=0.0):
         super().__init__(parent)
@@ -627,6 +814,7 @@ class AccountDialog(QDialog):
         layout = QFormLayout(self)
         
         self.name_edit = QLineEdit(name)
+        self.name_edit.setPlaceholderText("Enter account name...")
         layout.addRow("Account Name:", self.name_edit)
         
         self.type_combo = QComboBox()
@@ -641,12 +829,22 @@ class AccountDialog(QDialog):
         layout.addRow("Initial Balance:", self.balance_spin)
         
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
     
+    def validate_and_accept(self):
+        name = self.name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Validation Error", "Account name cannot be empty!")
+            return
+        if len(name) < 2:
+            QMessageBox.warning(self, "Validation Error", "Account name must be at least 2 characters!")
+            return
+        self.accept()
+    
     def get_data(self):
-        return (self.name_edit.text(), self.type_combo.currentText(), self.balance_spin.value())
+        return (self.name_edit.text().strip(), self.type_combo.currentText(), self.balance_spin.value())
 
 
 class BudgetCategoryDialog(QDialog):
@@ -658,6 +856,7 @@ class BudgetCategoryDialog(QDialog):
         layout = QFormLayout(self)
         
         self.name_edit = QLineEdit(name)
+        self.name_edit.setPlaceholderText("Enter category name...")
         layout.addRow("Category Name:", self.name_edit)
         
         self.budget_spin = QDoubleSpinBox()
@@ -667,24 +866,44 @@ class BudgetCategoryDialog(QDialog):
         layout.addRow("Budgeted Amount:", self.budget_spin)
         
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
     
+    def validate_and_accept(self):
+        name = self.name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Validation Error", "Category name cannot be empty!")
+            return
+        if len(name) < 2:
+            QMessageBox.warning(self, "Validation Error", "Category name must be at least 2 characters!")
+            return
+        if self.budget_spin.value() <= 0:
+            QMessageBox.warning(self, "Validation Error", "Budget amount must be greater than 0!")
+            return
+        self.accept()
+    
     def get_data(self):
-        return (self.name_edit.text(), self.budget_spin.value())
+        return (self.name_edit.text().strip(), self.budget_spin.value())
 
 
 class PurchaseDialog(QDialog):
     def __init__(self, parent, accounts, categories):
+        print(f"PurchaseDialog.__init__ starting with {len(accounts)} accounts, {len(categories)} categories")
+        init_start = time.time()
+        
         super().__init__(parent)
         self.setWindowTitle("Add Purchase")
-        self.setModal(True)
+        self.setModal(False)  # Never use modal in WSL2
         self.resize(400, 300)
         
         layout = QFormLayout(self)
         
-        self.user_edit = QLineEdit("husband")  # Default to husband for desktop entries
+        print("Creating form fields...")
+        field_start = time.time()
+        
+        self.user_edit = QLineEdit("")  # Start empty instead of "husband"
+        self.user_edit.setPlaceholderText("Enter user name...")
         layout.addRow("User:", self.user_edit)
         
         self.amount_spin = QDoubleSpinBox()
@@ -692,20 +911,39 @@ class PurchaseDialog(QDialog):
         self.amount_spin.setDecimals(2)
         layout.addRow("Amount (R):", self.amount_spin)
         
+        print("Populating account combo...")
+        combo_start = time.time()
+        
         self.account_combo = QComboBox()
-        self.account_combo.addItem("None", None)
+        self.account_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.account_combo.setMinimumContentsLength(20)
+        self.account_combo.addItem("-- Select Account --", None)
         for account in accounts:
             self.account_combo.addItem(f"{account[1]}", account[0])
+        
+        combo_elapsed = time.time() - combo_start
+        print(f"Account combo populated in {combo_elapsed:.2f}s")
         layout.addRow("Account:", self.account_combo)
         
+        print("Populating category combo...")
+        cat_combo_start = time.time()
+        
         self.category_combo = QComboBox()
-        self.category_combo.addItem("None", None)
+        self.category_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.category_combo.setMinimumContentsLength(20)
+        self.category_combo.addItem("-- Select Category --", None)
         for category in categories:
             self.category_combo.addItem(category[1], category[0])
+            
+        cat_combo_elapsed = time.time() - cat_combo_start
+        print(f"Category combo populated in {cat_combo_elapsed:.2f}s")
         layout.addRow("Category:", self.category_combo)
+        
+        print("Creating remaining fields...")
         
         self.description_edit = QTextEdit()
         self.description_edit.setMaximumHeight(80)
+        self.description_edit.setPlaceholderText("Enter purchase description...")
         layout.addRow("Description:", self.description_edit)
         
         self.date_edit = QDateTimeEdit(datetime.now())
@@ -713,17 +951,47 @@ class PurchaseDialog(QDialog):
         layout.addRow("Date & Time:", self.date_edit)
         
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
+        
+        total_elapsed = time.time() - init_start
+        print(f"PurchaseDialog.__init__ completed in {total_elapsed:.2f}s")
+    
+    def validate_and_accept(self):
+        user = self.user_edit.text().strip()
+        if not user:
+            QMessageBox.warning(self, "Validation Error", "User name cannot be empty!")
+            return
+        
+        if self.amount_spin.value() <= 0:
+            QMessageBox.warning(self, "Validation Error", "Amount must be greater than 0!")
+            return
+        
+        if self.account_combo.currentData() is None:
+            reply = QMessageBox.question(self, "No Account Selected", 
+                                       "No account selected. Continue without updating account balance?",
+                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.No:
+                return
+        
+        description = self.description_edit.toPlainText().strip()
+        if not description:
+            reply = QMessageBox.question(self, "No Description", 
+                                       "No description entered. Continue anyway?",
+                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.No:
+                return
+        
+        self.accept()
     
     def get_data(self):
         return {
-            'user': self.user_edit.text(),
+            'user': self.user_edit.text().strip(),
             'amount': self.amount_spin.value(),
             'account_id': self.account_combo.currentData(),
             'category_id': self.category_combo.currentData(),
-            'description': self.description_edit.toPlainText(),
+            'description': self.description_edit.toPlainText().strip(),
             'date': self.date_edit.dateTime().toPython()
         }
 
