@@ -401,86 +401,87 @@ def create_budget_category():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-@app.route('/get_transfers')
-def get_transfers():
-    """Get all transfers for display."""
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT t.id, t.amount, t.description, t.originator_user, t.transfer_date,
-                   fa.name as from_account_name, ta.name as to_account_name
-            FROM transfers t 
-            LEFT JOIN accounts fa ON t.from_account_id = fa.id
-            LEFT JOIN accounts ta ON t.to_account_id = ta.id
-            ORDER BY t.transfer_date DESC
-        ''')
-        transfers = cur.fetchall()
-        conn.close()
-        
-        transfer_list = []
-        for t in transfers:
-            transfer_list.append({
-                'id': t[0],
-                'amount': float(t[1]),
-                'description': t[2],
-                'originator': t[3],
-                'date': t[4].isoformat() if t[4] else None,
-                'from_account': t[5],
-                'to_account': t[6]
-            })
-        
-        return jsonify(transfer_list)
-    
-    except Exception as e:
-        return jsonify({"error": str(e)})
+# Transfer endpoints temporarily disabled until migration is run
+# @app.route('/get_transfers')
+# def get_transfers():
+#     """Get all transfers for display."""
+#     try:
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+#         cur.execute('''
+#             SELECT t.id, t.amount, t.description, t.originator_user, t.transfer_date,
+#                    fa.name as from_account_name, ta.name as to_account_name
+#             FROM transfers t 
+#             LEFT JOIN accounts fa ON t.from_account_id = fa.id
+#             LEFT JOIN accounts ta ON t.to_account_id = ta.id
+#             ORDER BY t.transfer_date DESC
+#         ''')
+#         transfers = cur.fetchall()
+#         conn.close()
+#         
+#         transfer_list = []
+#         for t in transfers:
+#             transfer_list.append({
+#                 'id': t[0],
+#                 'amount': float(t[1]),
+#                 'description': t[2],
+#                 'originator': t[3],
+#                 'date': t[4].isoformat() if t[4] else None,
+#                 'from_account': t[5],
+#                 'to_account': t[6]
+#             })
+#         
+#         return jsonify(transfer_list)
+#     
+#     except Exception as e:
+#         return jsonify({"error": str(e)})
 
-@app.route('/create_transfer', methods=['POST'])
-def create_transfer():
-    """Create a new transfer between accounts."""
-    try:
-        data = request.json
-        from_account_id = data.get('from_account_id')
-        to_account_id = data.get('to_account_id')
-        amount = float(data.get('amount', 0))
-        description = data.get('description', '')
-        originator = data.get('originator', 'Robert')
-        transfer_date = data.get('transfer_date', datetime.now().isoformat())
-        
-        if not from_account_id or not to_account_id or amount <= 0:
-            return jsonify({"status": "error", "message": "Invalid transfer data"})
-        
-        if from_account_id == to_account_id:
-            return jsonify({"status": "error", "message": "Cannot transfer to the same account"})
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Check source account balance
-        cur.execute('SELECT balance FROM accounts WHERE id = %s', (from_account_id,))
-        result = cur.fetchone()
-        if not result or result[0] < amount:
-            return jsonify({"status": "error", "message": "Insufficient funds"})
-        
-        # Perform transfer
-        cur.execute('UPDATE accounts SET balance = balance - %s WHERE id = %s', 
-                   (amount, from_account_id))
-        cur.execute('UPDATE accounts SET balance = balance + %s WHERE id = %s', 
-                   (amount, to_account_id))
-        
-        # Record transfer
-        cur.execute('''
-            INSERT INTO transfers (from_account_id, to_account_id, amount, description, originator_user, transfer_date)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (from_account_id, to_account_id, amount, description, originator, transfer_date))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({"status": "success", "message": "Transfer completed"})
-    
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+# @app.route('/create_transfer', methods=['POST'])
+# def create_transfer():
+#     """Create a new transfer between accounts."""
+#     try:
+#         data = request.json
+#         from_account_id = data.get('from_account_id')
+#         to_account_id = data.get('to_account_id')
+#         amount = float(data.get('amount', 0))
+#         description = data.get('description', '')
+#         originator = data.get('originator', 'Robert')
+#         transfer_date = data.get('transfer_date', datetime.now().isoformat())
+#         
+#         if not from_account_id or not to_account_id or amount <= 0:
+#             return jsonify({"status": "error", "message": "Invalid transfer data"})
+#         
+#         if from_account_id == to_account_id:
+#             return jsonify({"status": "error", "message": "Cannot transfer to the same account"})
+#         
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+#         
+#         # Check source account balance
+#         cur.execute('SELECT balance FROM accounts WHERE id = %s', (from_account_id,))
+#         result = cur.fetchone()
+#         if not result or result[0] < amount:
+#             return jsonify({"status": "error", "message": "Insufficient funds"})
+#         
+#         # Perform transfer
+#         cur.execute('UPDATE accounts SET balance = balance - %s WHERE id = %s', 
+#                    (amount, from_account_id))
+#         cur.execute('UPDATE accounts SET balance = balance + %s WHERE id = %s', 
+#                    (amount, to_account_id))
+#         
+#         # Record transfer
+#         cur.execute('''
+#             INSERT INTO transfers (from_account_id, to_account_id, amount, description, originator_user, transfer_date)
+#             VALUES (%s, %s, %s, %s, %s, %s)
+#         ''', (from_account_id, to_account_id, amount, description, originator, transfer_date))
+#         
+#         conn.commit()
+#         conn.close()
+#         
+#         return jsonify({"status": "success", "message": "Transfer completed"})
+#     
+#     except Exception as e:
+#         return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/manifest.json')
 def manifest():
