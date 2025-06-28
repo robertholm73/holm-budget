@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
 import pg8000
 import os
-from datetime import datetime
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 import json
 import urllib.parse
 
@@ -121,10 +122,14 @@ def sync_purchases():
             budget_category_name = purchase.get('category', '')
             amount = float(purchase['amount'])
             
-            # Get budget category ID
+            # Get budget category ID for current period
             budget_category_id = None
             if budget_category_name:
-                cur.execute('SELECT id FROM budget_categories WHERE name = %s', (budget_category_name,))
+                cur.execute('''
+                    SELECT bc.id FROM budget_categories bc
+                    JOIN budget_periods bp ON bc.period_id = bp.id
+                    WHERE bc.name = %s AND bp.is_active = TRUE
+                ''', (budget_category_name,))
                 result = cur.fetchone()
                 if result:
                     budget_category_id = result[0]
@@ -217,9 +222,28 @@ def get_accounts():
 @app.route('/get_budget_categories')
 def get_budget_categories():
     try:
+        period_id = request.args.get('period_id')
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
+        
+        if period_id:
+            # Get categories for specific period
+            cur.execute('''
+                SELECT id, name, budgeted_amount, current_balance 
+                FROM budget_categories 
+                WHERE period_id = %s 
+                ORDER BY name
+            ''', (period_id,))
+        else:
+            # Get categories for current active period
+            cur.execute('''
+                SELECT bc.id, bc.name, bc.budgeted_amount, bc.current_balance 
+                FROM budget_categories bc
+                JOIN budget_periods bp ON bc.period_id = bp.id
+                WHERE bp.is_active = TRUE 
+                ORDER BY bc.name
+            ''')
+        
         categories = cur.fetchall()
         conn.close()
         
@@ -279,6 +303,182 @@ def update_budget_amount():
         conn.close()
         
         return jsonify({"status": "success", "message": "Budget amount updated"})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+# Budget Period Management Endpoints
+@app.route('/get_budget_periods')
+def get_budget_periods():
+    """Get all budget periods with their details."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, period_name, start_date, end_date, is_active 
+            FROM budget_periods 
+            ORDER BY start_date
+        ''')
+        periods = cur.fetchall()
+        conn.close()
+        
+        period_list = []
+        for p in periods:
+            period_list.append({
+                'id': p[0],
+                'period_name': p[1],
+                'start_date': p[2].isoformat() if p[2] else None,
+                'end_date': p[3].isoformat() if p[3] else None,
+                'is_active': p[4]
+            })
+        
+        return jsonify(period_list)
+    
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/set_active_period', methods=['POST'])
+def set_active_period():
+    """Set a specific period as active."""
+    try:
+        data = request.json
+        period_id = data.get('period_id')
+        
+        if period_id is None:
+            return jsonify({"status": "error", "message": "Missing period_id"})
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Deactivate all periods
+        cur.execute('UPDATE budget_periods SET is_active = FALSE')
+        
+        # Activate the specified period
+        cur.execute('UPDATE budget_periods SET is_active = TRUE WHERE id = %s', (period_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "Active period updated"})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/create_budget_category', methods=['POST'])
+def create_budget_category():
+    """Create a new budget category for a specific period."""
+    try:
+        data = request.json
+        name = data.get('name')
+        budgeted_amount = data.get('budgeted_amount', 0)
+        period_id = data.get('period_id')
+        
+        if not name:
+            return jsonify({"status": "error", "message": "Category name is required"})
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # If no period_id provided, use current active period
+        if not period_id:
+            cur.execute('SELECT id FROM budget_periods WHERE is_active = TRUE LIMIT 1')
+            result = cur.fetchone()
+            if result:
+                period_id = result[0]
+            else:
+                return jsonify({"status": "error", "message": "No active period found"})
+        
+        # Insert new category
+        cur.execute('''
+            INSERT INTO budget_categories (name, budgeted_amount, current_balance, period_id)
+            VALUES (%s, %s, 0, %s)
+        ''', (name, float(budgeted_amount), period_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "Budget category created"})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/get_transfers')
+def get_transfers():
+    """Get all transfers for display."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT t.id, t.amount, t.description, t.originator_user, t.transfer_date,
+                   fa.name as from_account_name, ta.name as to_account_name
+            FROM transfers t 
+            LEFT JOIN accounts fa ON t.from_account_id = fa.id
+            LEFT JOIN accounts ta ON t.to_account_id = ta.id
+            ORDER BY t.transfer_date DESC
+        ''')
+        transfers = cur.fetchall()
+        conn.close()
+        
+        transfer_list = []
+        for t in transfers:
+            transfer_list.append({
+                'id': t[0],
+                'amount': float(t[1]),
+                'description': t[2],
+                'originator': t[3],
+                'date': t[4].isoformat() if t[4] else None,
+                'from_account': t[5],
+                'to_account': t[6]
+            })
+        
+        return jsonify(transfer_list)
+    
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/create_transfer', methods=['POST'])
+def create_transfer():
+    """Create a new transfer between accounts."""
+    try:
+        data = request.json
+        from_account_id = data.get('from_account_id')
+        to_account_id = data.get('to_account_id')
+        amount = float(data.get('amount', 0))
+        description = data.get('description', '')
+        originator = data.get('originator', 'Robert')
+        transfer_date = data.get('transfer_date', datetime.now().isoformat())
+        
+        if not from_account_id or not to_account_id or amount <= 0:
+            return jsonify({"status": "error", "message": "Invalid transfer data"})
+        
+        if from_account_id == to_account_id:
+            return jsonify({"status": "error", "message": "Cannot transfer to the same account"})
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Check source account balance
+        cur.execute('SELECT balance FROM accounts WHERE id = %s', (from_account_id,))
+        result = cur.fetchone()
+        if not result or result[0] < amount:
+            return jsonify({"status": "error", "message": "Insufficient funds"})
+        
+        # Perform transfer
+        cur.execute('UPDATE accounts SET balance = balance - %s WHERE id = %s', 
+                   (amount, from_account_id))
+        cur.execute('UPDATE accounts SET balance = balance + %s WHERE id = %s', 
+                   (amount, to_account_id))
+        
+        # Record transfer
+        cur.execute('''
+            INSERT INTO transfers (from_account_id, to_account_id, amount, description, originator_user, transfer_date)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (from_account_id, to_account_id, amount, description, originator, transfer_date))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "Transfer completed"})
     
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})

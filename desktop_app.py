@@ -10,7 +10,8 @@ import os
 import signal
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 
 # Load environment variables from .env file
@@ -117,8 +118,13 @@ class BudgetDesktopApp(QMainWindow):
         
         # Use connection manager instead of creating new connections
         self.conn_manager = ConnectionManager(self.database_url)
+        
+        # Current period tracking
+        self.current_period_id = None
+        self.budget_periods = []
             
         self.setup_ui()
+        self.load_periods()
         self.load_data()
     
 
@@ -207,6 +213,15 @@ class BudgetDesktopApp(QMainWindow):
     def setup_budget_tab(self):
         layout = QVBoxLayout(self.budget_widget)
         
+        # Period selection header
+        period_layout = QHBoxLayout()
+        period_layout.addWidget(QLabel("Budget Period:"))
+        self.period_combo = QComboBox()
+        self.period_combo.currentTextChanged.connect(self.on_period_changed)
+        period_layout.addWidget(self.period_combo)
+        period_layout.addStretch()
+        layout.addLayout(period_layout)
+        
         # Title
         title = QLabel("Budget Categories")
         title.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px;")
@@ -288,6 +303,50 @@ class BudgetDesktopApp(QMainWindow):
         
         layout.addLayout(purchase_controls_layout)
     
+    def load_periods(self):
+        """Load available budget periods from database."""
+        try:
+            conn = self.get_db_connection()
+            cur = conn.cursor()
+            
+            cur.execute('''
+                SELECT id, period_name, start_date, end_date, is_active 
+                FROM budget_periods 
+                ORDER BY start_date
+            ''')
+            periods = cur.fetchall()
+            
+            self.budget_periods = []
+            self.period_combo.clear()
+            
+            for period in periods:
+                period_data = {
+                    'id': period[0],
+                    'name': period[1],
+                    'start_date': period[2],
+                    'end_date': period[3],
+                    'is_active': period[4]
+                }
+                self.budget_periods.append(period_data)
+                self.period_combo.addItem(period[1], period[0])
+                
+                # Set current period if active
+                if period[4]:  # is_active
+                    self.current_period_id = period[0]
+                    self.period_combo.setCurrentText(period[1])
+            
+            conn.close()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Period Load Error", f"Failed to load budget periods: {str(e)}")
+    
+    def on_period_changed(self):
+        """Handle period selection change."""
+        current_data = self.period_combo.currentData()
+        if current_data:
+            self.current_period_id = current_data
+            self.load_data()  # Reload data for new period
+    
     def load_data(self):
         try:
             conn = self.get_db_connection()
@@ -310,7 +369,22 @@ class BudgetDesktopApp(QMainWindow):
             
             # Load budget categories with timeout protection
             try:
-                cur.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
+                if self.current_period_id:
+                    cur.execute('''
+                        SELECT id, name, budgeted_amount, current_balance 
+                        FROM budget_categories 
+                        WHERE period_id = %s 
+                        ORDER BY name
+                    ''', (self.current_period_id,))
+                else:
+                    # Fallback to current active period if no period selected
+                    cur.execute('''
+                        SELECT bc.id, bc.name, bc.budgeted_amount, bc.current_balance 
+                        FROM budget_categories bc
+                        JOIN budget_periods bp ON bc.period_id = bp.id
+                        WHERE bp.is_active = TRUE 
+                        ORDER BY bc.name
+                    ''')
                 categories = cur.fetchall()
                 
                 # Populate budget table
@@ -581,16 +655,16 @@ class BudgetDesktopApp(QMainWindow):
                 cur.execute('UPDATE accounts SET balance = balance + %s WHERE id = %s', 
                            (data['amount'], data['to_account_id']))
                 
-                # Record the transfer as a single purchase from the source account
+                # Record the transfer in the dedicated transfers table
                 transfer_date = data['date']
-                description = data['description'] or f"Transfer to {data['to_account_name']}"
+                description = data['description'] or f"Transfer from {data['from_account_name']} to {data['to_account_name']}"
+                originator = data.get('originator', 'Robert')  # Default to Robert if not specified
                 
-                # Record only the withdrawal from source account with clear description
                 cur.execute('''
-                    INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
-                    VALUES (%s, %s, %s, NULL, %s, %s)
-                ''', ('Robert', data['amount'], data['from_account_id'], 
-                      f"Transfer: {description} → {data['to_account_name']}", transfer_date))
+                    INSERT INTO transfers (from_account_id, to_account_id, amount, description, originator_user, transfer_date)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (data['from_account_id'], data['to_account_id'], data['amount'], 
+                      description, originator, transfer_date))
                 
                 conn.commit()
                 conn.close()
@@ -603,14 +677,20 @@ class BudgetDesktopApp(QMainWindow):
     
     # Budget category management methods
     def add_budget_category(self):
+        if not self.current_period_id:
+            QMessageBox.warning(self, "No Period Selected", "Please select a budget period first.")
+            return
+            
         dialog = BudgetCategoryDialog(self)
         if dialog.exec() == QDialog.Accepted:
             name, budgeted_amount = dialog.get_data()
             try:
                 conn = self.get_db_connection()
                 cur = conn.cursor()
-                cur.execute('INSERT INTO budget_categories (name, budgeted_amount, current_balance) VALUES (%s, %s, 0)', 
-                           (name, budgeted_amount))
+                cur.execute('''
+                    INSERT INTO budget_categories (name, budgeted_amount, current_balance, period_id) 
+                    VALUES (%s, %s, 0, %s)
+                ''', (name, budgeted_amount, self.current_period_id))
                 conn.commit()
                 conn.close()
                 self.load_data()
@@ -743,10 +823,20 @@ class BudgetDesktopApp(QMainWindow):
                 cur.execute('UPDATE accounts SET balance = balance - %s WHERE id = %s', 
                            (data['amount'], data['account_id']))
             
-            # Update budget category balance
+            # Update budget category balance (with period validation)
             if data['category_id']:
-                cur.execute('UPDATE budget_categories SET current_balance = current_balance - %s WHERE id = %s', 
-                           (data['amount'], data['category_id']))
+                if self.current_period_id:
+                    # Validate that the category belongs to the current period
+                    cur.execute('''
+                        UPDATE budget_categories 
+                        SET current_balance = current_balance - %s 
+                        WHERE id = %s AND period_id = %s
+                    ''', (data['amount'], data['category_id'], self.current_period_id))
+                else:
+                    # Fallback for backward compatibility
+                    cur.execute('''
+                        UPDATE budget_categories SET current_balance = current_balance - %s WHERE id = %s
+                    ''', (data['amount'], data['category_id']))
             
             conn.commit()
             conn.close()
@@ -788,8 +878,10 @@ class BudgetDesktopApp(QMainWindow):
                     if account_id:
                         cur.execute('UPDATE accounts SET balance = balance + %s WHERE id = %s', (amount, account_id))
                     
-                    # Reverse budget category balance
+                    # Reverse budget category balance (with period validation)
                     if category_id:
+                        # Note: We don't validate period here since we're reversing a historical transaction
+                        # The category might be from a different period than currently selected
                         cur.execute('UPDATE budget_categories SET current_balance = current_balance + %s WHERE id = %s', (amount, category_id))
                     
                     # Delete purchase
@@ -1020,6 +1112,12 @@ class TransferDialog(QDialog):
             self.to_account_combo.setCurrentIndex(1)
         layout.addRow("To Account:", self.to_account_combo)
         
+        # Originator (who is initiating the transfer)
+        self.originator_combo = QComboBox()
+        self.originator_combo.addItem("Robert", "Robert")
+        self.originator_combo.addItem("Peanut", "Peanut")
+        layout.addRow("Transfer Originator:", self.originator_combo)
+        
         # Amount
         self.amount_spin = QDoubleSpinBox()
         self.amount_spin.setRange(0.01, 999999.99)
@@ -1074,6 +1172,7 @@ class TransferDialog(QDialog):
             'to_account_name': to_name,
             'amount': self.amount_spin.value(),
             'description': self.description_edit.text(),
+            'originator': self.originator_combo.currentData(),
             'date': self.date_edit.dateTime().toPython()
         }
 
