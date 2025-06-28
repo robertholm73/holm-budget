@@ -21,4 +21,5 @@ Desktop app:
 		- A column for Peanut and one for Robert, with totals at the bottom. 
 		
 Mobile app:
-	- Only one change: On the Admin tab: Account balances, all negative amounts must turn red. 
+	- One line on top showing which month & year's budget we're working with. It's just and indicator, it doesn't have to do anything nor list the other months. 
+	- On the Admin tab: Account balances, all negative amounts must turn red 

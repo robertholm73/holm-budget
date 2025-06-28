@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, render_template, send_from_directory
 import pg8000
 import os
 from datetime import datetime, date
-from dateutil.relativedelta import relativedelta
 import json
 import urllib.parse
 
