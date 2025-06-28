@@ -83,15 +83,15 @@ def init_db():
         ''', (name, acc_type))
     
     # Insert default budget categories if they don't exist
-    categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Other']
-    for category in categories:
-        cur.execute('''
-            INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
-            VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
-        ''', (category,))
+    # categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Other']
+    # for category in categories:
+    #     cur.execute('''
+    #         INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
+    #         VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
+    #     ''', (category,))
     
-    conn.commit()
-    conn.close()
+    # conn.commit()
+    # conn.close()
 
 # Initialize database on startup
 try:
