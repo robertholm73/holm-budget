@@ -50,7 +50,19 @@ def cleanup_database():
         deleted_accounts = cur.rowcount
         print(f"✅ Deleted {deleted_accounts} bad accounts")
         
-        # 2. Clean up empty budget categories
+        # 2. Clean up unwanted default budget categories
+        print("Removing unwanted default budget categories...")
+        unwanted_categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Other']
+        placeholders = ', '.join(['%s'] * len(unwanted_categories))
+        cur.execute(f"""
+            DELETE FROM budget_categories 
+            WHERE name IN ({placeholders})
+            AND NOT (name LIKE 'Peanut -%' OR name LIKE 'Robert -%')
+        """, unwanted_categories)
+        deleted_unwanted = cur.rowcount
+        print(f"✅ Deleted {deleted_unwanted} unwanted default categories")
+        
+        # 3. Clean up empty budget categories
         print("Removing empty budget categories...")
         cur.execute("""
             DELETE FROM budget_categories 
@@ -58,10 +70,10 @@ def cleanup_database():
             AND budgeted_amount = 0 
             AND current_balance = 0
         """)
-        deleted_categories = cur.rowcount
-        print(f"✅ Deleted {deleted_categories} empty categories")
+        deleted_empty = cur.rowcount
+        print(f"✅ Deleted {deleted_empty} empty categories")
         
-        # 3. Clean up orphaned purchases (optional - be careful!)
+        # 4. Clean up orphaned purchases (optional - be careful!)
         print("Checking for orphaned purchases...")
         cur.execute("""
             SELECT COUNT(*) FROM purchases 
@@ -79,7 +91,7 @@ def cleanup_database():
                 """)
                 print(f"✅ Deleted {orphaned_purchases} orphaned purchases")
         
-        # 4. Add constraints to prevent future issues
+        # 5. Add constraints to prevent future issues
         print("Adding database constraints...")
         
         # Check if constraints already exist
@@ -113,7 +125,7 @@ def cleanup_database():
             except Exception as e:
                 print(f"⚠️ Could not add category constraint: {e}")
         
-        # 5. Show current state
+        # 6. Show current state
         print("\n📊 Current database state:")
         cur.execute("SELECT COUNT(*) FROM accounts")
         account_count = cur.fetchone()[0]
@@ -133,7 +145,8 @@ def cleanup_database():
         
         print(f"\n🎉 Cleanup completed successfully!")
         print(f"   Removed {deleted_accounts} bad accounts")
-        print(f"   Removed {deleted_categories} empty categories")
+        print(f"   Removed {deleted_unwanted} unwanted default categories")
+        print(f"   Removed {deleted_empty} empty categories")
         print("   Added validation constraints")
         
     except Exception as e:
