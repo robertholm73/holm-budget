@@ -471,6 +471,133 @@ def update_budget_amount():
 #     except Exception as e:
 #         return jsonify({"status": "error", "message": str(e)})
 
+@app.route('/run_migration')
+def run_migration():
+    """Run database migration - REMOVE THIS ENDPOINT AFTER USE"""
+    try:
+        from datetime import date, timedelta
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Begin transaction
+        cursor.execute("BEGIN")
+        
+        # Step 1: Create budget_periods table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS budget_periods (
+                id SERIAL PRIMARY KEY,
+                period_name VARCHAR(20) NOT NULL UNIQUE,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                is_active BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Step 2: Generate 12 months of periods
+        from datetime import datetime
+        now = datetime.now()
+        
+        # Find current period start (25th)
+        if now.day >= 25:
+            period_start = date(now.year, now.month, 25)
+        else:
+            prev_month = now.replace(day=1) - timedelta(days=1)
+            period_start = date(prev_month.year, prev_month.month, 25)
+        
+        periods = []
+        for i in range(12):
+            start_date = period_start
+            if i > 0:
+                # Add months properly
+                month = period_start.month + i
+                year = period_start.year
+                while month > 12:
+                    month -= 12
+                    year += 1
+                start_date = date(year, month, 25)
+            
+            # End date is 24th of next month
+            end_month = start_date.month + 1
+            end_year = start_date.year
+            if end_month > 12:
+                end_month = 1
+                end_year += 1
+            end_date = date(end_year, end_month, 24)
+            
+            # Period name is the end month
+            period_name = end_date.strftime("%B %Y")
+            
+            # Check if this is active period
+            today = date.today()
+            is_active = start_date <= today <= end_date
+            
+            cursor.execute("""
+                INSERT INTO budget_periods (period_name, start_date, end_date, is_active)
+                VALUES (%s, %s, %s, %s) ON CONFLICT (period_name) DO NOTHING
+            """, (period_name, start_date, end_date, is_active))
+            
+            periods.append(f"{period_name} ({'ACTIVE' if is_active else 'inactive'})")
+        
+        # Step 3: Add period_id to budget_categories if not exists
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'budget_categories' 
+            AND column_name = 'period_id'
+        """)
+        
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE budget_categories 
+                ADD COLUMN period_id INTEGER REFERENCES budget_periods(id)
+            """)
+        
+        # Step 4: Update existing categories to current period
+        cursor.execute("SELECT id FROM budget_periods WHERE is_active = TRUE LIMIT 1")
+        current_period_result = cursor.fetchone()
+        
+        if current_period_result:
+            current_period_id = current_period_result[0]
+            cursor.execute("""
+                UPDATE budget_categories 
+                SET period_id = %s 
+                WHERE period_id IS NULL
+            """, (current_period_id,))
+            updated_count = cursor.rowcount
+        
+        # Step 5: Create transfers table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transfers (
+                id SERIAL PRIMARY KEY,
+                from_account_id INTEGER NOT NULL,
+                to_account_id INTEGER NOT NULL,
+                amount DECIMAL(10,2) NOT NULL,
+                description TEXT,
+                originator_user VARCHAR(255) NOT NULL,
+                transfer_date TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (from_account_id) REFERENCES accounts (id),
+                FOREIGN KEY (to_account_id) REFERENCES accounts (id)
+            )
+        """)
+        
+        # Commit transaction
+        cursor.execute("COMMIT")
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "status": "success",
+            "message": "Migration completed successfully!",
+            "periods_created": periods,
+            "categories_updated": updated_count if current_period_result else 0
+        })
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 @app.route('/manifest.json')
 def manifest():
     return {

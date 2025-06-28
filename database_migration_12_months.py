@@ -21,6 +21,16 @@ from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 import pg8000
 
+# Load environment variables from .env file
+from pathlib import Path
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    with open(env_file) as f:
+        for line in f:
+            if '=' in line and not line.strip().startswith('#'):
+                key, value = line.strip().split('=', 1)
+                os.environ[key] = value
+
 def get_db_connection():
     """Get database connection using environment variable."""
     database_url = os.getenv('DATABASE_URL')
@@ -28,10 +38,20 @@ def get_db_connection():
         raise ValueError("DATABASE_URL environment variable not set")
     
     try:
-        conn = pg8000.connect(database_url)
+        # Parse DATABASE_URL for pg8000
+        import urllib.parse
+        parsed = urllib.parse.urlparse(database_url)
+        conn = pg8000.connect(
+            host=parsed.hostname,
+            database=parsed.path[1:],  # Remove leading slash
+            user=parsed.username,
+            password=parsed.password,
+            port=parsed.port or 5432
+        )
         return conn
     except Exception as e:
         print(f"Error connecting to database: {e}")
+        print(f"Database URL: {database_url}")
         raise
 
 def generate_budget_periods():
