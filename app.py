@@ -90,16 +90,22 @@ def init_db():
     #         VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
     #     ''', (category,))
     
-    # conn.commit()
-    # conn.close()
+    conn.commit()
+    conn.close()
 
 # Initialize database on startup
-try:
-    init_db()
-    print("Database initialized successfully")
-except Exception as e:
-    print(f"Database initialization failed: {e}")
-    print("Please check your DATABASE_URL environment variable")
+def initialize_database():
+    try:
+        init_db()
+        print("Database initialized successfully")
+        return True
+    except Exception as e:
+        print(f"Database initialization failed: {e}")
+        print("Please check your DATABASE_URL environment variable")
+        return False
+
+# Try to initialize database, but don't crash if it fails
+database_ready = initialize_database()
 
 @app.route('/')
 def mobile_form():
