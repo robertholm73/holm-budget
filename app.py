@@ -93,19 +93,21 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Initialize database on startup
-def initialize_database():
+# Database initialization moved to lazy loading
+def ensure_database():
+    """Initialize database if not already done. Called on first request."""
     try:
+        database_url = os.environ.get('DATABASE_URL')
+        if not database_url:
+            print("DATABASE_URL not set - database features unavailable")
+            return False
+            
         init_db()
         print("Database initialized successfully")
         return True
     except Exception as e:
         print(f"Database initialization failed: {e}")
-        print("Please check your DATABASE_URL environment variable")
         return False
-
-# Try to initialize database, but don't crash if it fails
-database_ready = initialize_database()
 
 @app.route('/')
 def mobile_form():
@@ -114,6 +116,9 @@ def mobile_form():
 @app.route('/sync_purchases', methods=['POST'])
 def sync_purchases():
     try:
+        # Ensure database is initialized
+        ensure_database()
+        
         purchases = request.json
         if not purchases:
             return jsonify({"status": "error", "message": "No purchases to sync"})
