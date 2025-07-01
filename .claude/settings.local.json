@@ -32,7 +32,25 @@
       "Bash(find:*)",
       "Bash(rg:*)",
       "Bash(timeout:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(npm install:*)",
+      "Bash(npx cap add:*)",
+      "Bash(source ~/.bashrc)",
+      "Bash(nvm install:*)",
+      "Bash(nvm use:*)",
+      "Bash(sed:*)",
+      "Bash(./gradlew:*)",
+      "Bash(echo $ANDROID_HOME)",
+      "Bash(java:*)",
+      "Bash(apt list:*)",
+      "Bash(apt search:*)",
+      "Bash(npx cap:*)",
+      "Bash(sudo rm:*)",
+      "Bash(export:*)",
+      "Bash(npm update:*)",
+      "Bash(npm info:*)",
+      "Bash(sudo update-alternatives:*)",
+      "Bash(./build-apk.sh:*)"
     ],
     "deny": []
   }

@@ -1,0 +1,8 @@
+{
+  "appId": "com.holmbudget.app",
+  "appName": "Budget Tracker",
+  "webDir": "templates",
+  "server": {
+    "cleartext": true
+  }
+}

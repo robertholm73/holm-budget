@@ -1,0 +1,90 @@
+{
+  "monthly_setup_template": {
+    "description": "Template for creating new monthly budget periods. Edit this file to customize accounts and categories for future months.",
+    "period_info": {
+      "note": "Periods run from 25th to 24th. Period name will be the budget month (e.g. 'August 2025' for 25 July - 24 August)"
+    },
+    "accounts": [
+      {
+        "name": "Bank Account 1",
+        "account_type": "bank",
+        "initial_balance": 0,
+        "description": "Primary checking account"
+      },
+      {
+        "name": "Bank Account 2", 
+        "account_type": "bank",
+        "initial_balance": 0,
+        "description": "Savings account"
+      },
+      {
+        "name": "Bank Account 3",
+        "account_type": "bank", 
+        "initial_balance": 0,
+        "description": "Secondary checking"
+      },
+      {
+        "name": "Bank Account 4",
+        "account_type": "bank",
+        "initial_balance": 0,
+        "description": "Investment account"
+      },
+      {
+        "name": "Bank Account 5",
+        "account_type": "bank",
+        "initial_balance": 0,
+        "description": "Emergency fund"
+      },
+      {
+        "name": "Bank Account 6",
+        "account_type": "bank",
+        "initial_balance": 0,
+        "description": "Business account"
+      }
+    ],
+    "budget_categories": [
+      {
+        "name": "Food",
+        "budgeted_amount": 500.00,
+        "description": "Groceries and dining out"
+      },
+      {
+        "name": "Transport",
+        "budgeted_amount": 300.00,
+        "description": "Gas, public transport, car maintenance"
+      },
+      {
+        "name": "Shopping",
+        "budgeted_amount": 200.00,
+        "description": "Clothing, household items"
+      },
+      {
+        "name": "Bills",
+        "budgeted_amount": 800.00,
+        "description": "Utilities, phone, internet, insurance"
+      },
+      {
+        "name": "Entertainment",
+        "budgeted_amount": 150.00,
+        "description": "Movies, games, subscriptions"
+      },
+      {
+        "name": "Health",
+        "budgeted_amount": 100.00,
+        "description": "Medical expenses, pharmacy"
+      },
+      {
+        "name": "Other",
+        "budgeted_amount": 100.00,
+        "description": "Miscellaneous expenses"
+      }
+    ],
+    "usage_instructions": {
+      "1": "Edit the budgeted_amount values for each category as needed",
+      "2": "Add or remove budget categories as required", 
+      "3": "Modify account names if needed (but keep same structure)",
+      "4": "This template will be used at midnight on the 24th of each month",
+      "5": "The system will automatically create the next month's budget period"
+    }
+  }
+}

@@ -13,6 +13,8 @@ import time
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
+import requests
+import json
 
 # Load environment variables from .env file
 from pathlib import Path
@@ -190,6 +192,12 @@ class BudgetDesktopApp(QMainWindow):
         transfer_btn.clicked.connect(self.transfer_money)
         controls_layout.addWidget(transfer_btn)
         
+        # Add income
+        income_btn = QPushButton("Add Income")
+        income_btn.clicked.connect(self.add_income)
+        income_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        controls_layout.addWidget(income_btn)
+        
         controls_layout.addStretch()
         
         # Quick balance update
@@ -213,14 +221,18 @@ class BudgetDesktopApp(QMainWindow):
     def setup_budget_tab(self):
         layout = QVBoxLayout(self.budget_widget)
         
-        # Period selection header
-        period_layout = QHBoxLayout()
-        period_layout.addWidget(QLabel("Budget Period:"))
-        self.period_combo = QComboBox()
-        self.period_combo.currentTextChanged.connect(self.on_period_changed)
-        period_layout.addWidget(self.period_combo)
-        period_layout.addStretch()
-        layout.addLayout(period_layout)
+        # Monthly tabs header
+        tabs_layout = QHBoxLayout()
+        tabs_layout.addWidget(QLabel("Budget Periods:"))
+        
+        # Create tab buttons for 12 months
+        self.period_tabs = []
+        self.period_tab_layout = QHBoxLayout()
+        
+        # We'll populate these after loading periods
+        tabs_layout.addLayout(self.period_tab_layout)
+        tabs_layout.addStretch()
+        layout.addLayout(tabs_layout)
         
         # Title
         title = QLabel("Budget Categories")
@@ -304,8 +316,9 @@ class BudgetDesktopApp(QMainWindow):
         layout.addLayout(purchase_controls_layout)
     
     def load_periods(self):
-        """Load available budget periods from database."""
+        """Load available budget periods and create tab buttons."""
         try:
+            # Get periods via database (could also use API in future)
             conn = self.get_db_connection()
             cur = conn.cursor()
             
@@ -315,10 +328,16 @@ class BudgetDesktopApp(QMainWindow):
                 ORDER BY start_date
             ''')
             periods = cur.fetchall()
+            conn.close()
             
             self.budget_periods = []
-            self.period_combo.clear()
             
+            # Clear existing tab buttons
+            for tab_button in self.period_tabs:
+                tab_button.setParent(None)
+            self.period_tabs.clear()
+            
+            # Create tab buttons for each period
             for period in periods:
                 period_data = {
                     'id': period[0],
@@ -328,24 +347,62 @@ class BudgetDesktopApp(QMainWindow):
                     'is_active': period[4]
                 }
                 self.budget_periods.append(period_data)
-                self.period_combo.addItem(period[1], period[0])
                 
-                # Set current period if active
+                # Create tab button
+                tab_button = QPushButton(period[1])
+                tab_button.setCheckable(True)
+                tab_button.setMinimumWidth(100)
+                tab_button.clicked.connect(lambda checked, p_id=period[0]: self.on_period_tab_clicked(p_id))
+                
+                # Style active tab differently
                 if period[4]:  # is_active
                     self.current_period_id = period[0]
-                    self.period_combo.setCurrentText(period[1])
-            
-            conn.close()
+                    tab_button.setChecked(True)
+                    tab_button.setStyleSheet("""
+                        QPushButton:checked {
+                            background-color: #007acc;
+                            color: white;
+                            font-weight: bold;
+                        }
+                    """)
+                else:
+                    tab_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #f0f0f0;
+                            border: 1px solid #ccc;
+                            padding: 5px;
+                        }
+                        QPushButton:hover {
+                            background-color: #e0e0e0;
+                        }
+                        QPushButton:checked {
+                            background-color: #007acc;
+                            color: white;
+                            font-weight: bold;
+                        }
+                    """)
+                
+                self.period_tabs.append(tab_button)
+                self.period_tab_layout.addWidget(tab_button)
             
         except Exception as e:
             QMessageBox.warning(self, "Period Load Error", f"Failed to load budget periods: {str(e)}")
     
-    def on_period_changed(self):
-        """Handle period selection change."""
-        current_data = self.period_combo.currentData()
-        if current_data:
-            self.current_period_id = current_data
-            self.load_data()  # Reload data for new period
+    def on_period_tab_clicked(self, period_id):
+        """Handle period tab click."""
+        # Update current period
+        self.current_period_id = period_id
+        
+        # Update tab button states
+        for i, tab_button in enumerate(self.period_tabs):
+            period_data = self.budget_periods[i]
+            if period_data['id'] == period_id:
+                tab_button.setChecked(True)
+            else:
+                tab_button.setChecked(False)
+        
+        # Reload data for selected period
+        self.load_data()
     
     def load_data(self):
         try:
@@ -402,15 +459,30 @@ class BudgetDesktopApp(QMainWindow):
                 QMessageBox.warning(self, "Data Load Warning", f"Failed to load budget categories: {str(e)}")
                 self.budget_table.setRowCount(0)
             
-            # Load recent purchases with timeout protection
+            # Load purchases filtered by period date range
             try:
-                cur.execute('''
-                    SELECT p.id, p.user_name, p.amount, a.name, bc.name, p.description, p.date
-                    FROM purchases p 
-                    LEFT JOIN accounts a ON p.account_id = a.id
-                    LEFT JOIN budget_categories bc ON p.budget_category_id = bc.id
-                    ORDER BY p.date DESC LIMIT 50
-                ''')
+                if self.current_period_id:
+                    # Get purchases within the selected period's date range
+                    cur.execute('''
+                        SELECT p.id, p.user_name, p.amount, a.name, bc.name, p.description, p.date
+                        FROM purchases p 
+                        LEFT JOIN accounts a ON p.account_id = a.id
+                        LEFT JOIN budget_categories bc ON p.budget_category_id = bc.id
+                        JOIN budget_periods bp ON bp.id = %s
+                        WHERE p.date >= bp.start_date AND p.date <= (bp.end_date + INTERVAL '1 day')
+                        ORDER BY p.date DESC LIMIT 200
+                    ''', (self.current_period_id,))
+                else:
+                    # Fallback to current active period
+                    cur.execute('''
+                        SELECT p.id, p.user_name, p.amount, a.name, bc.name, p.description, p.date
+                        FROM purchases p 
+                        LEFT JOIN accounts a ON p.account_id = a.id
+                        LEFT JOIN budget_categories bc ON p.budget_category_id = bc.id
+                        JOIN budget_periods bp ON bp.is_active = TRUE
+                        WHERE p.date >= bp.start_date AND p.date <= (bp.end_date + INTERVAL '1 day')
+                        ORDER BY p.date DESC LIMIT 200
+                    ''')
                 purchases = cur.fetchall()
                 
                 # Populate purchases table
@@ -674,6 +746,57 @@ class BudgetDesktopApp(QMainWindow):
                 
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Failed to process transfer: {str(e)}")
+    
+    def add_income(self):
+        """Add income to an account."""
+        try:
+            # Get all accounts for the income dialog
+            conn = self.get_db_connection()
+            cur = conn.cursor()
+            
+            try:
+                cur.execute('SELECT id, name, balance FROM accounts ORDER BY name')
+                accounts = cur.fetchall()
+            except Exception as e:
+                QMessageBox.critical(self, "Database Timeout", f"Failed to load accounts for income: {str(e)}")
+                return
+                
+            conn.close()
+            
+            if len(accounts) == 0:
+                QMessageBox.warning(self, "No Accounts", "You need at least one account to record income.")
+                return
+            
+            dialog = IncomeDialog(self, accounts)
+            if dialog.exec() == QDialog.Accepted:
+                data = dialog.get_data()
+                
+                conn = self.get_db_connection()
+                cur = conn.cursor()
+                
+                # Add income to target account
+                cur.execute('UPDATE accounts SET balance = balance + %s WHERE id = %s', 
+                           (data['amount'], data['target_account_id']))
+                
+                # Record the income as a special transaction (income, not purchase)
+                # We'll create a dedicated income table or use purchases with special marking
+                income_description = f"Income: {data['description']} (received by {data['username']})"
+                
+                # For now, record as a "purchase" with negative amount (income) and no category
+                cur.execute('''
+                    INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
+                    VALUES (%s, %s, %s, NULL, %s, %s)
+                ''', (data['username'], -data['amount'], data['target_account_id'], 
+                      income_description, data['date']))
+                
+                conn.commit()
+                conn.close()
+                self.load_data()
+                QMessageBox.information(self, "Success", 
+                                      f"Added R{data['amount']:.2f} income to {data['target_account_name']} for {data['username']}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Failed to process income: {str(e)}")
     
     # Budget category management methods
     def add_budget_category(self):
@@ -1173,6 +1296,80 @@ class TransferDialog(QDialog):
             'amount': self.amount_spin.value(),
             'description': self.description_edit.text(),
             'originator': self.originator_combo.currentData(),
+            'date': self.date_edit.dateTime().toPython()
+        }
+
+
+class IncomeDialog(QDialog):
+    def __init__(self, parent, accounts):
+        super().__init__(parent)
+        self.setWindowTitle("Add Income")
+        self.setModal(True)
+        self.resize(400, 250)
+        
+        layout = QFormLayout(self)
+        
+        # Username (who received the income)
+        self.username_combo = QComboBox()
+        self.username_combo.addItem("Robert", "Robert")
+        self.username_combo.addItem("Peanut", "Peanut")
+        layout.addRow("Username (Recipient):", self.username_combo)
+        
+        # Amount
+        self.amount_spin = QDoubleSpinBox()
+        self.amount_spin.setRange(0.01, 999999.99)
+        self.amount_spin.setDecimals(2)
+        self.amount_spin.setPrefix("R")
+        layout.addRow("Income Amount:", self.amount_spin)
+        
+        # Target bank account
+        self.target_account_combo = QComboBox()
+        for account in accounts:
+            self.target_account_combo.addItem(f"{account[1]} (R{account[2]:.2f})", account[0])
+        layout.addRow("Target Account:", self.target_account_combo)
+        
+        # Description/Source
+        self.description_edit = QLineEdit()
+        self.description_edit.setPlaceholderText("e.g., Salary, Freelance, Gift, etc.")
+        layout.addRow("Income Source:", self.description_edit)
+        
+        # Date
+        self.date_edit = QDateTimeEdit(datetime.now())
+        self.date_edit.setCalendarPopup(True)
+        layout.addRow("Date & Time:", self.date_edit)
+        
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.validate_and_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+        
+        # Store accounts data for validation
+        self.accounts = accounts
+    
+    def validate_and_accept(self):
+        if self.amount_spin.value() <= 0:
+            QMessageBox.warning(self, "Invalid Amount", "Income amount must be greater than 0!")
+            return
+        
+        if not self.description_edit.text().strip():
+            QMessageBox.warning(self, "Missing Description", "Please enter an income source/description!")
+            return
+        
+        self.accept()
+    
+    def get_data(self):
+        target_id = self.target_account_combo.currentData()
+        
+        # Get account name for transaction record
+        target_name = self.target_account_combo.currentText().split(' (')[0]
+        
+        return {
+            'username': self.username_combo.currentData(),
+            'amount': self.amount_spin.value(),
+            'target_account_id': target_id,
+            'target_account_name': target_name,
+            'description': self.description_edit.text().strip(),
             'date': self.date_edit.dateTime().toPython()
         }
 

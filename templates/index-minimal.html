@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget App</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            text-align: center;
+        }
+        .status { 
+            margin: 20px 0; 
+            padding: 10px; 
+            border-radius: 5px;
+        }
+        .success { 
+            background: #d4edda; 
+            color: #155724; 
+        }
+        .error { 
+            background: #f8d7da; 
+            color: #721c24; 
+        }
+    </style>
+</head>
+<body>
+    <h1>Budget Tracker</h1>
+    <div id="status" class="status">Loading...</div>
+    <button onclick="testConnection()">Test Connection</button>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = 'App loaded successfully!';
+            statusDiv.className = 'status success';
+            
+            console.log('Minimal app loaded');
+            
+            // Test if we're in Capacitor
+            if (window.Capacitor) {
+                console.log('Running in Capacitor');
+                statusDiv.textContent += ' (Capacitor mode)';
+            } else {
+                console.log('Running in browser');
+                statusDiv.textContent += ' (Browser mode)';
+            }
+        });
+        
+        async function testConnection() {
+            const statusDiv = document.getElementById('status');
+            try {
+                statusDiv.textContent = 'Testing connection...';
+                statusDiv.className = 'status';
+                
+                console.log('Starting connection test...');
+                console.log('User agent:', navigator.userAgent);
+                console.log('Online status:', navigator.onLine);
+                
+                // Add fetch options for mobile
+                const fetchOptions = {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    mode: 'cors',
+                    credentials: 'omit'
+                };
+                
+                const response = await fetch('https://holm-budget-qvsg.onrender.com/get_accounts', fetchOptions);
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+                    statusDiv.textContent = `✅ Connected! Found ${data.length} accounts.`;
+                    statusDiv.className = 'status success';
+                } else {
+                    const text = await response.text();
+                    console.error('Response text:', text);
+                    throw new Error(`HTTP ${response.status}: ${text}`);
+                }
+            } catch (error) {
+                console.error('Connection test failed:', error);
+                console.error('Error details:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                statusDiv.textContent = `❌ Connection failed: ${error.message}`;
+                statusDiv.className = 'status error';
+            }
+        }
+    </script>
+</body>
+</html>

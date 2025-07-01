@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask_cors import CORS
 import pg8000
 import os
 from datetime import datetime, date
@@ -6,6 +7,7 @@ import json
 import urllib.parse
 
 app = Flask(__name__)
+CORS(app, origins=['*'], supports_credentials=False)
 
 # Database connection helper
 def get_db_connection():
@@ -228,9 +230,28 @@ def get_accounts():
 @app.route('/get_budget_categories')
 def get_budget_categories():
     try:
+        period_id = request.args.get('period_id')
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('SELECT id, name, budgeted_amount, current_balance FROM budget_categories ORDER BY name')
+        
+        if period_id:
+            # Get categories for specific period
+            cur.execute('''
+                SELECT id, name, budgeted_amount, current_balance 
+                FROM budget_categories 
+                WHERE period_id = %s 
+                ORDER BY name
+            ''', (period_id,))
+        else:
+            # Get categories for current active period
+            cur.execute('''
+                SELECT bc.id, bc.name, bc.budgeted_amount, bc.current_balance 
+                FROM budget_categories bc
+                JOIN budget_periods bp ON bc.period_id = bp.id
+                WHERE bp.is_active = TRUE 
+                ORDER BY bc.name
+            ''')
+        
         categories = cur.fetchall()
         conn.close()
         
@@ -294,62 +315,62 @@ def update_budget_amount():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-# Budget Period Management Endpoints - TEMPORARILY DISABLED UNTIL MIGRATION
-# @app.route('/get_budget_periods')
-# def get_budget_periods():
-#     """Get all budget periods with their details."""
-#     try:
-#         conn = get_db_connection()
-#         cur = conn.cursor()
-#         cur.execute('''
-#             SELECT id, period_name, start_date, end_date, is_active 
-#             FROM budget_periods 
-#             ORDER BY start_date
-#         ''')
-#         periods = cur.fetchall()
-#         conn.close()
-#         
-#         period_list = []
-#         for p in periods:
-#             period_list.append({
-#                 'id': p[0],
-#                 'period_name': p[1],
-#                 'start_date': p[2].isoformat() if p[2] else None,
-#                 'end_date': p[3].isoformat() if p[3] else None,
-#                 'is_active': p[4]
-#             })
-#         
-#         return jsonify(period_list)
-#     
-#     except Exception as e:
-#         return jsonify({"error": str(e)})
+# Budget Period Management Endpoints
+@app.route('/get_budget_periods')
+def get_budget_periods():
+    """Get all budget periods with their details."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, period_name, start_date, end_date, is_active 
+            FROM budget_periods 
+            ORDER BY start_date
+        ''')
+        periods = cur.fetchall()
+        conn.close()
+        
+        period_list = []
+        for p in periods:
+            period_list.append({
+                'id': p[0],
+                'period_name': p[1],
+                'start_date': p[2].isoformat() if p[2] else None,
+                'end_date': p[3].isoformat() if p[3] else None,
+                'is_active': p[4]
+            })
+        
+        return jsonify(period_list)
+    
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
-# @app.route('/set_active_period', methods=['POST'])
-# def set_active_period():
-#     """Set a specific period as active."""
-#     try:
-#         data = request.json
-#         period_id = data.get('period_id')
-#         
-#         if period_id is None:
-#             return jsonify({"status": "error", "message": "Missing period_id"})
-#         
-#         conn = get_db_connection()
-#         cur = conn.cursor()
-#         
-#         # Deactivate all periods
-#         cur.execute('UPDATE budget_periods SET is_active = FALSE')
-#         
-#         # Activate the specified period
-#         cur.execute('UPDATE budget_periods SET is_active = TRUE WHERE id = %s', (period_id,))
-#         
-#         conn.commit()
-#         conn.close()
-#         
-#         return jsonify({"status": "success", "message": "Active period updated"})
-#     
-#     except Exception as e:
-#         return jsonify({"status": "error", "message": str(e)})
+@app.route('/set_active_period', methods=['POST'])
+def set_active_period():
+    """Set a specific period as active."""
+    try:
+        data = request.json
+        period_id = data.get('period_id')
+        
+        if period_id is None:
+            return jsonify({"status": "error", "message": "Missing period_id"})
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Deactivate all periods
+        cur.execute('UPDATE budget_periods SET is_active = FALSE')
+        
+        # Activate the specified period
+        cur.execute('UPDATE budget_periods SET is_active = TRUE WHERE id = %s', (period_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "Active period updated"})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
 # @app.route('/create_budget_category', methods=['POST'])
 # def create_budget_category():
@@ -471,132 +492,48 @@ def update_budget_amount():
 #     except Exception as e:
 #         return jsonify({"status": "error", "message": str(e)})
 
-@app.route('/run_migration')
-def run_migration():
-    """Run database migration - REMOVE THIS ENDPOINT AFTER USE"""
+# Income Management Endpoint
+@app.route('/add_income', methods=['POST'])
+def add_income():
+    """Add income to an account."""
     try:
-        from datetime import date, timedelta
+        # Ensure database is initialized
+        ensure_database()
+        
+        data = request.json
+        username = data.get('username', 'Unknown')
+        amount = float(data.get('amount', 0))
+        target_account_id = data.get('target_account_id')
+        description = data.get('description', '')
+        income_date = data.get('income_date', datetime.now().isoformat())
+        
+        if not target_account_id or amount <= 0:
+            return jsonify({"status": "error", "message": "Invalid income data"})
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cur = conn.cursor()
         
-        # Begin transaction
-        cursor.execute("BEGIN")
+        # Add income to target account
+        cur.execute('UPDATE accounts SET balance = balance + %s WHERE id = %s', 
+                   (amount, target_account_id))
         
-        # Step 1: Create budget_periods table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS budget_periods (
-                id SERIAL PRIMARY KEY,
-                period_name VARCHAR(20) NOT NULL UNIQUE,
-                start_date DATE NOT NULL,
-                end_date DATE NOT NULL,
-                is_active BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        # Record the income as a special transaction (negative amount indicates income)
+        income_description = f"Income: {description} (received by {username})"
         
-        # Step 2: Generate 12 months of periods
-        from datetime import datetime
-        now = datetime.now()
+        cur.execute('''
+            INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
+            VALUES (%s, %s, %s, NULL, %s, %s)
+        ''', (username, -amount, target_account_id, income_description, income_date))
         
-        # Find current period start (25th)
-        if now.day >= 25:
-            period_start = date(now.year, now.month, 25)
-        else:
-            prev_month = now.replace(day=1) - timedelta(days=1)
-            period_start = date(prev_month.year, prev_month.month, 25)
-        
-        periods = []
-        for i in range(12):
-            start_date = period_start
-            if i > 0:
-                # Add months properly
-                month = period_start.month + i
-                year = period_start.year
-                while month > 12:
-                    month -= 12
-                    year += 1
-                start_date = date(year, month, 25)
-            
-            # End date is 24th of next month
-            end_month = start_date.month + 1
-            end_year = start_date.year
-            if end_month > 12:
-                end_month = 1
-                end_year += 1
-            end_date = date(end_year, end_month, 24)
-            
-            # Period name is the end month
-            period_name = end_date.strftime("%B %Y")
-            
-            # Check if this is active period
-            today = date.today()
-            is_active = start_date <= today <= end_date
-            
-            cursor.execute("""
-                INSERT INTO budget_periods (period_name, start_date, end_date, is_active)
-                VALUES (%s, %s, %s, %s) ON CONFLICT (period_name) DO NOTHING
-            """, (period_name, start_date, end_date, is_active))
-            
-            periods.append(f"{period_name} ({'ACTIVE' if is_active else 'inactive'})")
-        
-        # Step 3: Add period_id to budget_categories if not exists
-        cursor.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'budget_categories' 
-            AND column_name = 'period_id'
-        """)
-        
-        if not cursor.fetchone():
-            cursor.execute("""
-                ALTER TABLE budget_categories 
-                ADD COLUMN period_id INTEGER REFERENCES budget_periods(id)
-            """)
-        
-        # Step 4: Update existing categories to current period
-        cursor.execute("SELECT id FROM budget_periods WHERE is_active = TRUE LIMIT 1")
-        current_period_result = cursor.fetchone()
-        
-        if current_period_result:
-            current_period_id = current_period_result[0]
-            cursor.execute("""
-                UPDATE budget_categories 
-                SET period_id = %s 
-                WHERE period_id IS NULL
-            """, (current_period_id,))
-            updated_count = cursor.rowcount
-        
-        # Step 5: Create transfers table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS transfers (
-                id SERIAL PRIMARY KEY,
-                from_account_id INTEGER NOT NULL,
-                to_account_id INTEGER NOT NULL,
-                amount DECIMAL(10,2) NOT NULL,
-                description TEXT,
-                originator_user VARCHAR(255) NOT NULL,
-                transfer_date TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (from_account_id) REFERENCES accounts (id),
-                FOREIGN KEY (to_account_id) REFERENCES accounts (id)
-            )
-        """)
-        
-        # Commit transaction
-        cursor.execute("COMMIT")
-        cursor.close()
+        conn.commit()
         conn.close()
         
-        return jsonify({
-            "status": "success",
-            "message": "Migration completed successfully!",
-            "periods_created": periods,
-            "categories_updated": updated_count if current_period_result else 0
-        })
-        
+        return jsonify({"status": "success", "message": "Income added successfully"})
+    
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
+
+# Migration endpoint removed for security
 
 @app.route('/manifest.json')
 def manifest():
