@@ -230,27 +230,18 @@ def get_accounts():
 @app.route('/get_budget_categories')
 def get_budget_categories():
     try:
-        period_id = request.args.get('period_id')
+        # Ensure database is initialized
+        ensure_database()
+        
         conn = get_db_connection()
         cur = conn.cursor()
         
-        if period_id:
-            # Get categories for specific period
-            cur.execute('''
-                SELECT id, name, budgeted_amount, current_balance 
-                FROM budget_categories 
-                WHERE period_id = %s 
-                ORDER BY name
-            ''', (period_id,))
-        else:
-            # Get categories for current active period
-            cur.execute('''
-                SELECT bc.id, bc.name, bc.budgeted_amount, bc.current_balance 
-                FROM budget_categories bc
-                JOIN budget_periods bp ON bc.period_id = bp.id
-                WHERE bp.is_active = TRUE 
-                ORDER BY bc.name
-            ''')
+        # Get all budget categories (the original table design doesn't have period_id)
+        cur.execute('''
+            SELECT id, name, budgeted_amount, current_balance 
+            FROM budget_categories 
+            ORDER BY name
+        ''')
         
         categories = cur.fetchall()
         conn.close()

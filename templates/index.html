@@ -510,6 +510,7 @@
                     console.log('Loaded accounts:', accounts.length);
                     console.log('Loaded categories:', budgetCategories.length);
                     console.log('Sample account:', accounts[0]);
+                    console.log('Sample category:', budgetCategories[0]);
                     
                     updateAllDropdowns();
                     updateAdminDashboard();
@@ -624,7 +625,7 @@
                     if (response.ok) {
                         const purchases = await response.json();
                         
-                        // Filter purchases for this user by user_name field
+                        // Filter purchases for this user by user field
                         const userPrefix = user.charAt(0).toUpperCase() + user.slice(1); // "peanut" -> "Peanut"
                         const userPurchases = purchases.filter(p => 
                             p.user && p.user.toLowerCase() === userPrefix.toLowerCase()
