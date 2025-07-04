@@ -124,6 +124,9 @@ class BudgetDesktopApp(QMainWindow):
         # Current period tracking
         self.current_period_id = None
         self.budget_periods = []
+        
+        # User filter tracking
+        self.current_user_filter = "Both"  # "Robert", "Peanut", or "Both"
             
         self.setup_ui()
         self.load_periods()
@@ -135,9 +138,62 @@ class BudgetDesktopApp(QMainWindow):
     
     
     def setup_ui(self):
+        # Create main widget with vertical layout
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+        self.setCentralWidget(main_widget)
+        
         # Create tab widget
         self.tab_widget = QTabWidget()
-        self.setCentralWidget(self.tab_widget)
+        main_layout.addWidget(self.tab_widget)
+        
+        # User filter tabs
+        user_filter_layout = QHBoxLayout()
+        user_filter_layout.addWidget(QLabel("User Filter:"))
+        
+        self.user_filter_tabs = []
+        self.user_filter_layout = QHBoxLayout()
+        
+        # Create user filter buttons
+        for user in ["Robert", "Peanut", "Both"]:
+            tab_button = QPushButton(user)
+            tab_button.setCheckable(True)
+            tab_button.setMinimumWidth(80)
+            tab_button.clicked.connect(lambda checked, u=user: self.on_user_filter_clicked(u))
+            
+            # Style the buttons
+            if user == "Both":
+                tab_button.setChecked(True)
+                tab_button.setStyleSheet("""
+                    QPushButton:checked {
+                        background-color: #28a745;
+                        color: white;
+                        font-weight: bold;
+                    }
+                """)
+            else:
+                tab_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #f8f9fa;
+                        border: 1px solid #dee2e6;
+                        padding: 5px;
+                    }
+                    QPushButton:hover {
+                        background-color: #e9ecef;
+                    }
+                    QPushButton:checked {
+                        background-color: #28a745;
+                        color: white;
+                        font-weight: bold;
+                    }
+                """)
+            
+            self.user_filter_tabs.append(tab_button)
+            self.user_filter_layout.addWidget(tab_button)
+        
+        user_filter_layout.addLayout(self.user_filter_layout)
+        user_filter_layout.addStretch()
+        main_layout.addLayout(user_filter_layout)
         
         # Accounts tab
         self.accounts_widget = QWidget()
@@ -368,9 +424,10 @@ class BudgetDesktopApp(QMainWindow):
                 else:
                     tab_button.setStyleSheet("""
                         QPushButton {
-                            background-color: #f0f0f0;
+                            background-color: #ffffff;
                             border: 1px solid #ccc;
                             padding: 5px;
+                            color: #333333;
                         }
                         QPushButton:hover {
                             background-color: #e0e0e0;
@@ -404,6 +461,21 @@ class BudgetDesktopApp(QMainWindow):
         # Reload data for selected period
         self.load_data()
     
+    def on_user_filter_clicked(self, user):
+        """Handle user filter tab click."""
+        # Update current user filter
+        self.current_user_filter = user
+        
+        # Update tab button states
+        for tab_button in self.user_filter_tabs:
+            if tab_button.text() == user:
+                tab_button.setChecked(True)
+            else:
+                tab_button.setChecked(False)
+        
+        # Reload data for selected user filter
+        self.load_data()
+    
     def load_data(self):
         try:
             conn = self.get_db_connection()
@@ -416,10 +488,32 @@ class BudgetDesktopApp(QMainWindow):
                 
                 # Populate accounts table
                 self.accounts_table.setRowCount(len(accounts))
+                total_balance = 0
                 for row, account in enumerate(accounts):
                     self.accounts_table.setItem(row, 0, QTableWidgetItem(str(account[0])))
                     self.accounts_table.setItem(row, 1, QTableWidgetItem(str(account[1])))
-                    self.accounts_table.setItem(row, 2, QTableWidgetItem(f"R{account[2]:.2f}"))
+                    balance_item = QTableWidgetItem(f"R{account[2]:.2f}")
+                    # Make negative balances red
+                    if account[2] < 0:
+                        balance_item.setForeground(Qt.red)
+                    self.accounts_table.setItem(row, 2, balance_item)
+                    total_balance += account[2]
+                
+                # Add total row
+                total_row = self.accounts_table.rowCount()
+                self.accounts_table.setRowCount(total_row + 1)
+                self.accounts_table.setItem(total_row, 0, QTableWidgetItem(""))
+                total_label = QTableWidgetItem("Total")
+                from PySide6.QtGui import QFont
+                bold_font = QFont()
+                bold_font.setBold(True)
+                total_label.setFont(bold_font)
+                self.accounts_table.setItem(total_row, 1, total_label)
+                total_balance_item = QTableWidgetItem(f"R{total_balance:.2f}")
+                total_balance_item.setFont(bold_font)
+                if total_balance < 0:
+                    total_balance_item.setForeground(Qt.red)
+                self.accounts_table.setItem(total_row, 2, total_balance_item)
             except Exception as e:
                 QMessageBox.warning(self, "Data Load Warning", f"Failed to load accounts: {str(e)}")
                 self.accounts_table.setRowCount(0)
@@ -446,6 +540,9 @@ class BudgetDesktopApp(QMainWindow):
                 
                 # Populate budget table
                 self.budget_table.setRowCount(len(categories))
+                total_budgeted = 0
+                total_spent = 0
+                total_remaining = 0
                 for row, cat in enumerate(categories):
                     budgeted = float(cat[2])
                     spent = abs(float(cat[3]))  # current_balance is negative when money is spent
@@ -454,48 +551,121 @@ class BudgetDesktopApp(QMainWindow):
                     self.budget_table.setItem(row, 1, QTableWidgetItem(str(cat[1])))
                     self.budget_table.setItem(row, 2, QTableWidgetItem(f"R{budgeted:.2f}"))
                     self.budget_table.setItem(row, 3, QTableWidgetItem(f"R{spent:.2f}"))
-                    self.budget_table.setItem(row, 4, QTableWidgetItem(f"R{remaining:.2f}"))
+                    remaining_item = QTableWidgetItem(f"R{remaining:.2f}")
+                    # Make negative remaining amounts red
+                    if remaining < 0:
+                        remaining_item.setForeground(Qt.red)
+                    self.budget_table.setItem(row, 4, remaining_item)
+                    total_budgeted += budgeted
+                    total_spent += spent
+                    total_remaining += remaining
+                
+                # Add total row
+                total_row = self.budget_table.rowCount()
+                self.budget_table.setRowCount(total_row + 1)
+                self.budget_table.setItem(total_row, 0, QTableWidgetItem(""))
+                total_label = QTableWidgetItem("Total")
+                from PySide6.QtGui import QFont
+                bold_font = QFont()
+                bold_font.setBold(True)
+                total_label.setFont(bold_font)
+                self.budget_table.setItem(total_row, 1, total_label)
+                total_budgeted_item = QTableWidgetItem(f"R{total_budgeted:.2f}")
+                total_budgeted_item.setFont(bold_font)
+                self.budget_table.setItem(total_row, 2, total_budgeted_item)
+                total_spent_item = QTableWidgetItem(f"R{total_spent:.2f}")
+                total_spent_item.setFont(bold_font)
+                self.budget_table.setItem(total_row, 3, total_spent_item)
+                total_remaining_item = QTableWidgetItem(f"R{total_remaining:.2f}")
+                total_remaining_item.setFont(bold_font)
+                if total_remaining < 0:
+                    total_remaining_item.setForeground(Qt.red)
+                self.budget_table.setItem(total_row, 4, total_remaining_item)
             except Exception as e:
                 QMessageBox.warning(self, "Data Load Warning", f"Failed to load budget categories: {str(e)}")
                 self.budget_table.setRowCount(0)
             
-            # Load purchases filtered by period date range
+            # Load purchases filtered by period date range and user
             try:
+                # Build user filter condition
+                user_filter_condition = ""
+                params = []
+                
                 if self.current_period_id:
+                    if self.current_user_filter != "Both":
+                        user_filter_condition = "AND p.user_name = %s"
+                        params = [self.current_period_id, self.current_user_filter]
+                    else:
+                        params = [self.current_period_id]
+                    
                     # Get purchases within the selected period's date range
-                    cur.execute('''
+                    cur.execute(f'''
                         SELECT p.id, p.user_name, p.amount, a.name, bc.name, p.description, p.date
                         FROM purchases p 
                         LEFT JOIN accounts a ON p.account_id = a.id
                         LEFT JOIN budget_categories bc ON p.budget_category_id = bc.id
                         JOIN budget_periods bp ON bp.id = %s
                         WHERE p.date >= bp.start_date AND p.date <= (bp.end_date + INTERVAL '1 day')
+                        {user_filter_condition}
                         ORDER BY p.date DESC LIMIT 200
-                    ''', (self.current_period_id,))
+                    ''', params)
                 else:
+                    if self.current_user_filter != "Both":
+                        user_filter_condition = "AND p.user_name = %s"
+                        params = [self.current_user_filter]
+                    else:
+                        params = []
+                    
                     # Fallback to current active period
-                    cur.execute('''
+                    cur.execute(f'''
                         SELECT p.id, p.user_name, p.amount, a.name, bc.name, p.description, p.date
                         FROM purchases p 
                         LEFT JOIN accounts a ON p.account_id = a.id
                         LEFT JOIN budget_categories bc ON p.budget_category_id = bc.id
                         JOIN budget_periods bp ON bp.is_active = TRUE
                         WHERE p.date >= bp.start_date AND p.date <= (bp.end_date + INTERVAL '1 day')
+                        {user_filter_condition}
                         ORDER BY p.date DESC LIMIT 200
-                    ''')
+                    ''', params)
                 purchases = cur.fetchall()
                 
                 # Populate purchases table
                 self.purchases_table.setRowCount(len(purchases))
+                total_amount = 0
                 for row, purchase in enumerate(purchases):
                     formatted_date = purchase[6].strftime("%Y-%m-%d %H:%M") if purchase[6] else ""
                     self.purchases_table.setItem(row, 0, QTableWidgetItem(str(purchase[0])))
                     self.purchases_table.setItem(row, 1, QTableWidgetItem(str(purchase[1])))
-                    self.purchases_table.setItem(row, 2, QTableWidgetItem(f"R{purchase[2]:.2f}"))
+                    amount_item = QTableWidgetItem(f"R{purchase[2]:.2f}")
+                    # Make negative amounts red (income)
+                    if purchase[2] < 0:
+                        amount_item.setForeground(Qt.red)
+                    self.purchases_table.setItem(row, 2, amount_item)
                     self.purchases_table.setItem(row, 3, QTableWidgetItem(purchase[3] or "N/A"))
                     self.purchases_table.setItem(row, 4, QTableWidgetItem(purchase[4] or "N/A"))
                     self.purchases_table.setItem(row, 5, QTableWidgetItem(purchase[5] or ""))
                     self.purchases_table.setItem(row, 6, QTableWidgetItem(formatted_date))
+                    total_amount += purchase[2]
+                
+                # Add total row
+                total_row = self.purchases_table.rowCount()
+                self.purchases_table.setRowCount(total_row + 1)
+                self.purchases_table.setItem(total_row, 0, QTableWidgetItem(""))
+                self.purchases_table.setItem(total_row, 1, QTableWidgetItem(""))
+                total_amount_item = QTableWidgetItem(f"R{total_amount:.2f}")
+                from PySide6.QtGui import QFont
+                bold_font = QFont()
+                bold_font.setBold(True)
+                total_amount_item.setFont(bold_font)
+                if total_amount < 0:
+                    total_amount_item.setForeground(Qt.red)
+                self.purchases_table.setItem(total_row, 2, total_amount_item)
+                self.purchases_table.setItem(total_row, 3, QTableWidgetItem(""))
+                self.purchases_table.setItem(total_row, 4, QTableWidgetItem(""))
+                self.purchases_table.setItem(total_row, 5, QTableWidgetItem(""))
+                total_label = QTableWidgetItem("Total")
+                total_label.setFont(bold_font)
+                self.purchases_table.setItem(total_row, 6, total_label)
             except Exception as e:
                 QMessageBox.warning(self, "Data Load Warning", f"Failed to load purchases: {str(e)}")
                 self.purchases_table.setRowCount(0)
@@ -1117,9 +1287,10 @@ class PurchaseDialog(QDialog):
         print("Creating form fields...")
         field_start = time.time()
         
-        self.user_edit = QLineEdit("")  # Start empty instead of "husband"
-        self.user_edit.setPlaceholderText("Enter user name...")
-        layout.addRow("User:", self.user_edit)
+        self.user_combo = QComboBox()
+        self.user_combo.addItem("Robert", "Robert")
+        self.user_combo.addItem("Peanut", "Peanut")
+        layout.addRow("User:", self.user_combo)
         
         self.amount_spin = QDoubleSpinBox()
         self.amount_spin.setRange(0.01, 999999.99)
@@ -1174,7 +1345,7 @@ class PurchaseDialog(QDialog):
         print(f"PurchaseDialog.__init__ completed in {total_elapsed:.2f}s")
     
     def validate_and_accept(self):
-        user = self.user_edit.text().strip()
+        user = self.user_combo.currentText()
         if not user:
             QMessageBox.warning(self, "Validation Error", "User name cannot be empty!")
             return
@@ -1202,7 +1373,7 @@ class PurchaseDialog(QDialog):
     
     def get_data(self):
         return {
-            'user': self.user_edit.text().strip(),
+            'user': self.user_combo.currentText(),
             'amount': self.amount_spin.value(),
             'account_id': self.account_combo.currentData(),
             'category_id': self.category_combo.currentData(),
