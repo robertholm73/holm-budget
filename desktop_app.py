@@ -145,10 +145,13 @@ class BudgetDesktopApp(QMainWindow):
         
         # Create tab widget
         self.tab_widget = QTabWidget()
+        # Connect tab change signal to show/hide user filter
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
         main_layout.addWidget(self.tab_widget)
         
         # User filter tabs
-        user_filter_layout = QHBoxLayout()
+        self.user_filter_widget = QWidget()
+        user_filter_layout = QHBoxLayout(self.user_filter_widget)
         user_filter_layout.addWidget(QLabel("User Filter:"))
         
         self.user_filter_tabs = []
@@ -177,9 +180,11 @@ class BudgetDesktopApp(QMainWindow):
                         background-color: #f8f9fa;
                         border: 1px solid #dee2e6;
                         padding: 5px;
+                        color: #212529;
                     }
                     QPushButton:hover {
                         background-color: #e9ecef;
+                        color: #212529;
                     }
                     QPushButton:checked {
                         background-color: #28a745;
@@ -193,7 +198,10 @@ class BudgetDesktopApp(QMainWindow):
         
         user_filter_layout.addLayout(self.user_filter_layout)
         user_filter_layout.addStretch()
-        main_layout.addLayout(user_filter_layout)
+        main_layout.addWidget(self.user_filter_widget)
+        
+        # Initially hide user filter (will be shown when Purchases tab is selected)
+        self.user_filter_widget.hide()
         
         # Accounts tab
         self.accounts_widget = QWidget()
@@ -300,6 +308,7 @@ class BudgetDesktopApp(QMainWindow):
         self.budget_table.setColumnCount(5)
         self.budget_table.setHorizontalHeaderLabels(["ID", "Category", "Budgeted (R)", "Spent (R)", "Remaining (R)"])
         self.budget_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.budget_table.selectionModel().selectionChanged.connect(self.on_budget_selection_changed)
         layout.addWidget(self.budget_table)
         
         # Budget management controls
@@ -326,11 +335,14 @@ class BudgetDesktopApp(QMainWindow):
         budget_controls_layout.addWidget(QLabel("Quick Budget Update:"))
         self.budget_entry = QLineEdit()
         self.budget_entry.setMaximumWidth(150)
+        self.budget_entry.setPlaceholderText("Select category first...")
+        self.budget_entry.setEnabled(False)  # Start disabled
         budget_controls_layout.addWidget(self.budget_entry)
         
-        budget_btn = QPushButton("Update Budget")
-        budget_btn.clicked.connect(self.update_budget_amount)
-        budget_controls_layout.addWidget(budget_btn)
+        self.budget_btn = QPushButton("Update Budget")
+        self.budget_btn.clicked.connect(self.update_budget_amount)
+        self.budget_btn.setEnabled(False)  # Start disabled
+        budget_controls_layout.addWidget(self.budget_btn)
         
         layout.addLayout(budget_controls_layout)
     
@@ -475,6 +487,43 @@ class BudgetDesktopApp(QMainWindow):
         
         # Reload data for selected user filter
         self.load_data()
+    
+    def on_tab_changed(self, index):
+        """Handle main tab change to show/hide user filter."""
+        # Get the tab text to determine which tab is active
+        tab_text = self.tab_widget.tabText(index)
+        
+        # Show user filter only for Purchases tab
+        if tab_text == "Purchases":
+            self.user_filter_widget.show()
+        else:
+            self.user_filter_widget.hide()
+    
+    def on_budget_selection_changed(self):
+        """Handle budget table selection changes to enable/disable quick update controls."""
+        selected_row = self.budget_table.currentRow()
+        has_selection = selected_row >= 0
+        
+        if has_selection:
+            # Check if this is a valid data row (not the Total row)
+            id_item = self.budget_table.item(selected_row, 0)
+            if id_item and id_item.text().strip():
+                try:
+                    int(id_item.text())  # Try to convert to int
+                    # It's a valid category row
+                    self.budget_entry.setEnabled(True)
+                    self.budget_btn.setEnabled(True)
+                    category_name = self.budget_table.item(selected_row, 1).text()
+                    self.budget_entry.setPlaceholderText(f"New budget for {category_name}")
+                    return
+                except ValueError:
+                    pass
+        
+        # No valid selection or Total row selected
+        self.budget_entry.setEnabled(False)
+        self.budget_btn.setEnabled(False)
+        self.budget_entry.setPlaceholderText("Select category first...")
+        self.budget_entry.clear()
     
     def load_data(self):
         try:
@@ -751,7 +800,19 @@ class BudgetDesktopApp(QMainWindow):
     def update_budget_amount(self):
         selected_row = self.budget_table.currentRow()
         if selected_row < 0:
-            QMessageBox.warning(self, "Selection Error", "Please select a budget category")
+            QMessageBox.warning(self, "Selection Error", "Please select a budget category from the table first")
+            return
+        
+        # Check if it's a valid category row (not Total row)
+        id_item = self.budget_table.item(selected_row, 0)
+        if not id_item or not id_item.text().strip():
+            QMessageBox.warning(self, "Selection Error", "Please select a valid budget category (not the Total row)")
+            return
+        
+        try:
+            int(id_item.text())  # Validate it's a numeric ID
+        except ValueError:
+            QMessageBox.warning(self, "Selection Error", "Please select a valid budget category (not the Total row)")
             return
         
         if not self.budget_entry.text().strip():
@@ -1053,16 +1114,32 @@ class BudgetDesktopApp(QMainWindow):
             # Extract account data from the accounts table
             accounts = []
             for row in range(self.accounts_table.rowCount()):
-                account_id = int(self.accounts_table.item(row, 0).text())
-                account_name = self.accounts_table.item(row, 1).text()
-                accounts.append((account_id, account_name))
+                id_item = self.accounts_table.item(row, 0)
+                name_item = self.accounts_table.item(row, 1)
+                # Skip empty rows (like totals row)
+                if id_item and name_item and id_item.text().strip() and name_item.text().strip():
+                    try:
+                        account_id = int(id_item.text())
+                        account_name = name_item.text()
+                        accounts.append((account_id, account_name))
+                    except ValueError:
+                        # Skip rows that can't be converted to int (like Total row)
+                        continue
             
             # Extract category data from the budget table  
             categories = []
             for row in range(self.budget_table.rowCount()):
-                category_id = int(self.budget_table.item(row, 0).text())
-                category_name = self.budget_table.item(row, 1).text()
-                categories.append((category_id, category_name))
+                id_item = self.budget_table.item(row, 0)
+                name_item = self.budget_table.item(row, 1)
+                # Skip empty rows (like totals row)
+                if id_item and name_item and id_item.text().strip() and name_item.text().strip():
+                    try:
+                        category_id = int(id_item.text())
+                        category_name = name_item.text()
+                        categories.append((category_id, category_name))
+                    except ValueError:
+                        # Skip rows that can't be converted to int (like Total row)
+                        continue
             
             elapsed = time.time() - start_time
             print(f"Cached data extracted in {elapsed:.2f}s - {len(accounts)} accounts, {len(categories)} categories")

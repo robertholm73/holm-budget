@@ -5,6 +5,9 @@ import os
 from datetime import datetime, date
 import json
 import urllib.parse
+import threading
+import time
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
 CORS(app, origins=['*'], supports_credentials=False)
@@ -591,6 +594,114 @@ def add_income():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+# Monthly Budget Automation Functions
+def populate_monthly_budget():
+    """Populate budget categories with template amounts and add salary"""
+    try:
+        ensure_database()
+        settings = load_settings()
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get current month/year for logging
+        current_date = datetime.now()
+        month_year = current_date.strftime("%Y-%m")
+        
+        print(f"Starting monthly budget population for {month_year}")
+        
+        # 1. Update budget categories with template amounts
+        budget_categories = settings.get("budget_categories", {})
+        categories_updated = 0
+        
+        for user, categories in budget_categories.items():
+            for category, amount in categories.items():
+                category_name = f"{user} - {category}"
+                
+                # Update budgeted amount and reset current balance
+                cur.execute('''
+                    UPDATE budget_categories 
+                    SET budgeted_amount = %s, current_balance = %s
+                    WHERE name = %s
+                ''', (float(amount), float(amount), category_name))
+                
+                if cur.rowcount > 0:
+                    categories_updated += 1
+                else:
+                    # Create category if it doesn't exist
+                    cur.execute('''
+                        INSERT INTO budget_categories (name, budgeted_amount, current_balance)
+                        VALUES (%s, %s, %s)
+                    ''', (category_name, float(amount), float(amount)))
+                    categories_updated += 1
+        
+        # 2. Add salary to Robert's Bank Zero Cheque account
+        income_data = settings.get("Income", {})
+        robert_salary = income_data.get("Robert", 0)
+        
+        if robert_salary > 0:
+            # Find Robert's Bank Zero Cheque account
+            cur.execute('''
+                SELECT id FROM accounts 
+                WHERE name = %s
+            ''', ("Robert - Bank Zero Cheque",))
+            
+            result = cur.fetchone()
+            if result:
+                account_id = result[0]
+                
+                # Add salary to account
+                cur.execute('''
+                    UPDATE accounts 
+                    SET balance = balance + %s 
+                    WHERE id = %s
+                ''', (robert_salary, account_id))
+                
+                # Record as income transaction
+                cur.execute('''
+                    INSERT INTO purchases (user_name, amount, account_id, budget_category_id, description, date)
+                    VALUES (%s, %s, %s, NULL, %s, %s)
+                ''', ("Robert", -robert_salary, account_id, f"Monthly salary - {month_year}", current_date))
+                
+                print(f"Added salary of R{robert_salary} to Robert - Bank Zero Cheque")
+            else:
+                print("Error: Robert - Bank Zero Cheque account not found")
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"Monthly budget population completed: {categories_updated} categories updated, salary added")
+        return True
+        
+    except Exception as e:
+        print(f"Error in monthly budget population: {e}")
+        return False
+
+def setup_monthly_scheduler():
+    """Set up the monthly budget scheduler"""
+    try:
+        scheduler = BackgroundScheduler()
+        
+        # Schedule for 24th of each month at midnight, starting from 2025-07-24
+        scheduler.add_job(
+            func=populate_monthly_budget,
+            trigger='cron',
+            day=24,
+            hour=0,
+            minute=0,
+            start_date='2025-07-24 00:00:00',
+            id='monthly_budget_population',
+            replace_existing=True
+        )
+        
+        scheduler.start()
+        print("Monthly budget scheduler started - will run on 24th of each month at midnight")
+        return scheduler
+        
+    except Exception as e:
+        print(f"Error setting up scheduler: {e}")
+        return None
+
 # Admin endpoint to run Bank Zero migration
 @app.route('/admin/migrate_bank_zero', methods=['POST'])
 def admin_migrate_bank_zero():
@@ -601,6 +712,19 @@ def admin_migrate_bank_zero():
             return jsonify({"status": "success", "message": f"Migration completed: {rows_updated} accounts updated"})
         else:
             return jsonify({"status": "error", "message": "Migration failed"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+# Admin endpoint to manually trigger budget population
+@app.route('/admin/populate_budget', methods=['POST'])
+def admin_populate_budget():
+    """Admin endpoint to manually trigger monthly budget population"""
+    try:
+        success = populate_monthly_budget()
+        if success:
+            return jsonify({"status": "success", "message": "Monthly budget population completed successfully"})
+        else:
+            return jsonify({"status": "error", "message": "Budget population failed"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
@@ -628,6 +752,18 @@ def manifest():
 def service_worker():
     return send_from_directory('static', 'sw.js')
 
+# Initialize scheduler when app starts
+scheduler = None
+
+def initialize_scheduler():
+    """Initialize the monthly budget scheduler"""
+    global scheduler
+    if scheduler is None:
+        scheduler = setup_monthly_scheduler()
+
 if __name__ == '__main__':
+    # Initialize scheduler when running the app
+    initialize_scheduler()
+    
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port, debug=True)
