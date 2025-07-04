@@ -34,18 +34,36 @@ def migrate_bank_zero_names():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Update account names that contain "Bank 0"
+        # Update account names that contain "Bank 0" but not "Bank Zero"
         cur.execute('''
             UPDATE accounts 
             SET name = REPLACE(name, 'Bank 0', 'Bank Zero')
-            WHERE name LIKE '%Bank 0%'
+            WHERE name LIKE '%Bank 0%' AND name NOT LIKE '%Bank Zero%'
         ''')
         
         rows_updated = cur.rowcount
+        
+        # Also update purchases table to maintain consistency
+        cur.execute('''
+            UPDATE purchases 
+            SET account_id = (
+                SELECT id FROM accounts 
+                WHERE name = REPLACE(
+                    (SELECT name FROM accounts a2 WHERE a2.id = purchases.account_id), 
+                    'Bank 0', 'Bank Zero'
+                )
+            )
+            WHERE account_id IN (
+                SELECT id FROM accounts 
+                WHERE name LIKE '%Bank 0%' AND name NOT LIKE '%Bank Zero%'
+            )
+        ''')
+        
         conn.commit()
         conn.close()
         
-        print(f"Migration completed: {rows_updated} account names updated")
+        if rows_updated > 0:
+            print(f"Migration completed: {rows_updated} account names updated from 'Bank 0' to 'Bank Zero'")
         return rows_updated
     except Exception as e:
         print(f"Migration failed: {e}")
@@ -135,8 +153,13 @@ def init_db():
     conn.close()
 
 # Database initialization moved to lazy loading
+_db_initialized = False
 def ensure_database():
     """Initialize database if not already done. Called on first request."""
+    global _db_initialized
+    if _db_initialized:
+        return True
+        
     try:
         database_url = os.environ.get('DATABASE_URL')
         if not database_url:
@@ -145,9 +168,10 @@ def ensure_database():
             
         init_db()
         
-        # Run the Bank Zero migration
+        # Run the Bank Zero migration only once
         migrate_bank_zero_names()
         
+        _db_initialized = True
         print("Database initialized successfully")
         return True
     except Exception as e:

@@ -1,0 +1,57 @@
+{
+	"app_title": "Holm household budget application",
+	"copyright_text": "Copyright © 2025 Robert Holm. All rights reserved.",
+	"app_version": "0.1",
+	"bank_accounts": {
+		"Peanut": [
+			"Bank Zero Cheque",
+			"Bank Zero Savings",
+			"Cash",
+			"Tyme Cheque",
+			"Tyme Savings"
+		],
+		"Robert": [
+			"Bank Zero Cheque",
+			"Bank Zero Savings",
+			"Cash",
+			"Tyme Cheque",
+			"Tyme Savings",
+			"Tyme Business"
+		]
+	},
+	"budget_categories": {
+		"Peanut": [
+			"Bank Charges",
+			"Bibi Robotics",
+			"Bibi Snacks",
+			"Bonitas",
+			"Cleaning Products",
+			"Electricity",
+			"Groceries",
+			"Kid's Clothes and Uniforms",
+			"Medical Co-Pay & Chronic",
+			"Niknak Horse Riding",
+			"Pet Food",
+			"Petrol",
+			"Sequestration (x/17)",
+			"Takeaways",
+			"Toiletries",
+			"Vodacom",
+			"Gifts",
+			"Other"
+		],
+		"Robert": [
+			"Bank Charges",
+			"Household Allowance",
+			"King Price",
+			"Laptop Upgrade",
+			"Rain Internet",
+			"Rent",
+			"Sequestration(x/17)",
+			"Software",
+			"Transport",
+			"Town Council",
+			"Uber"
+		]
+	}
+}
