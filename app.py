@@ -9,6 +9,48 @@ import urllib.parse
 app = Flask(__name__)
 CORS(app, origins=['*'], supports_credentials=False)
 
+# Load settings from config file
+def load_settings():
+    try:
+        with open('config/settings.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("Warning: config/settings.json not found, using defaults")
+        return {
+            "bank_accounts": {},
+            "budget_categories": {}
+        }
+    except json.JSONDecodeError:
+        print("Error: config/settings.json is not valid JSON")
+        return {
+            "bank_accounts": {},
+            "budget_categories": {}
+        }
+
+# Safe database migration function
+def migrate_bank_zero_names():
+    """Safely update 'Bank 0' to 'Bank Zero' in account names"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Update account names that contain "Bank 0"
+        cur.execute('''
+            UPDATE accounts 
+            SET name = REPLACE(name, 'Bank 0', 'Bank Zero')
+            WHERE name LIKE '%Bank 0%'
+        ''')
+        
+        rows_updated = cur.rowcount
+        conn.commit()
+        conn.close()
+        
+        print(f"Migration completed: {rows_updated} account names updated")
+        return rows_updated
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        return -1
+
 # Database connection helper
 def get_db_connection():
     database_url = os.environ.get('DATABASE_URL')
@@ -68,29 +110,26 @@ def init_db():
         )
     ''')
     
-    # Insert default bank accounts if they don't exist
-    accounts = [
-        ('Bank Account 1', 'bank'),
-        ('Bank Account 2', 'bank'), 
-        ('Bank Account 3', 'bank'),
-        ('Bank Account 4', 'bank'),
-        ('Bank Account 5', 'bank'),
-        ('Bank Account 6', 'bank')
-    ]
+    # Load accounts and categories from config file
+    settings = load_settings()
     
-    for name, acc_type in accounts:
-        cur.execute('''
-            INSERT INTO accounts (name, account_type, balance) 
-            VALUES (%s, %s, 0) ON CONFLICT (name) DO NOTHING
-        ''', (name, acc_type))
+    # Insert bank accounts from config
+    for user, accounts in settings.get("bank_accounts", {}).items():
+        for account_type in accounts:
+            account_name = f"{user} - {account_type}"
+            cur.execute('''
+                INSERT INTO accounts (name, account_type, balance) 
+                VALUES (%s, %s, 0) ON CONFLICT (name) DO NOTHING
+            ''', (account_name, 'bank'))
     
-    # Insert default budget categories if they don't exist
-    # categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Other']
-    # for category in categories:
-    #     cur.execute('''
-    #         INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
-    #         VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
-    #     ''', (category,))
+    # Insert budget categories from config
+    for user, categories in settings.get("budget_categories", {}).items():
+        for category in categories:
+            category_name = f"{user} - {category}"
+            cur.execute('''
+                INSERT INTO budget_categories (name, budgeted_amount, current_balance) 
+                VALUES (%s, 0, 0) ON CONFLICT (name) DO NOTHING
+            ''', (category_name,))
     
     conn.commit()
     conn.close()
@@ -105,6 +144,10 @@ def ensure_database():
             return False
             
         init_db()
+        
+        # Run the Bank Zero migration
+        migrate_bank_zero_names()
+        
         print("Database initialized successfully")
         return True
     except Exception as e:
@@ -521,6 +564,19 @@ def add_income():
         
         return jsonify({"status": "success", "message": "Income added successfully"})
     
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+# Admin endpoint to run Bank Zero migration
+@app.route('/admin/migrate_bank_zero', methods=['POST'])
+def admin_migrate_bank_zero():
+    """Admin endpoint to manually run Bank Zero migration"""
+    try:
+        rows_updated = migrate_bank_zero_names()
+        if rows_updated >= 0:
+            return jsonify({"status": "success", "message": f"Migration completed: {rows_updated} accounts updated"})
+        else:
+            return jsonify({"status": "error", "message": "Migration failed"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
