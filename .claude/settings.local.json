@@ -51,7 +51,8 @@
       "Bash(npm info:*)",
       "Bash(sudo update-alternatives:*)",
       "Bash(./build-apk.sh:*)",
-      "Bash(./rebuild-mobile.sh:*)"
+      "Bash(./rebuild-mobile.sh:*)",
+      "Bash(source .env)"
     ],
     "deny": []
   }
