@@ -609,6 +609,7 @@ def populate_monthly_budget():
         month_year = current_date.strftime("%Y-%m")
         
         print(f"Starting monthly budget population for {month_year}")
+        print("DEBUG: Using new budget population code with detailed logging")
         
         # 1. Update budget categories with template amounts
         budget_categories = settings.get("budget_categories", {})
