@@ -614,26 +614,59 @@ def populate_monthly_budget():
         budget_categories = settings.get("budget_categories", {})
         categories_updated = 0
         
+        print(f"Processing {len(budget_categories)} users from settings")
+        
         for user, categories in budget_categories.items():
+            print(f"Processing user: {user} with {len(categories)} categories")
+            
             for category, amount in categories.items():
-                category_name = f"{user} - {category}"
-                
-                # Update budgeted amount and reset current balance
-                cur.execute('''
-                    UPDATE budget_categories 
-                    SET budgeted_amount = %s, current_balance = %s
-                    WHERE name = %s
-                ''', (float(amount), float(amount), category_name))
-                
-                if cur.rowcount > 0:
-                    categories_updated += 1
+                if isinstance(amount, dict):
+                    # Handle nested categories like Town Council
+                    print(f"Processing nested category: {user} - {category}")
+                    for sub_category, sub_amount in amount.items():
+                        category_name = f"{user} - {category} - {sub_category}"
+                        print(f"  Processing: {category_name} = R{sub_amount}")
+                        
+                        # Update budgeted amount and reset current balance
+                        cur.execute('''
+                            UPDATE budget_categories 
+                            SET budgeted_amount = %s, current_balance = %s
+                            WHERE name = %s
+                        ''', (float(sub_amount), float(sub_amount), category_name))
+                        
+                        if cur.rowcount > 0:
+                            categories_updated += 1
+                            print(f"    Updated existing category")
+                        else:
+                            # Create category if it doesn't exist
+                            cur.execute('''
+                                INSERT INTO budget_categories (name, budgeted_amount, current_balance)
+                                VALUES (%s, %s, %s)
+                            ''', (category_name, float(sub_amount), float(sub_amount)))
+                            categories_updated += 1
+                            print(f"    Created new category")
                 else:
-                    # Create category if it doesn't exist
+                    category_name = f"{user} - {category}"
+                    print(f"Processing: {category_name} = R{amount}")
+                    
+                    # Update budgeted amount and reset current balance
                     cur.execute('''
-                        INSERT INTO budget_categories (name, budgeted_amount, current_balance)
-                        VALUES (%s, %s, %s)
-                    ''', (category_name, float(amount), float(amount)))
-                    categories_updated += 1
+                        UPDATE budget_categories 
+                        SET budgeted_amount = %s, current_balance = %s
+                        WHERE name = %s
+                    ''', (float(amount), float(amount), category_name))
+                    
+                    if cur.rowcount > 0:
+                        categories_updated += 1
+                        print(f"  Updated existing category")
+                    else:
+                        # Create category if it doesn't exist
+                        cur.execute('''
+                            INSERT INTO budget_categories (name, budgeted_amount, current_balance)
+                            VALUES (%s, %s, %s)
+                        ''', (category_name, float(amount), float(amount)))
+                        categories_updated += 1
+                        print(f"  Created new category")
         
         # 2. Add salary to Robert's Bank Zero Cheque account
         income_data = settings.get("Income", {})
