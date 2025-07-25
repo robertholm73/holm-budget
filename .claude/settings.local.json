@@ -52,7 +52,9 @@
       "Bash(sudo update-alternatives:*)",
       "Bash(./build-apk.sh:*)",
       "Bash(./rebuild-mobile.sh:*)",
-      "Bash(source .env)"
+      "Bash(source .env)",
+      "Bash(crontab:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": []
   }

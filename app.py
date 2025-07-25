@@ -682,14 +682,14 @@ def setup_monthly_scheduler():
     try:
         scheduler = BackgroundScheduler()
         
-        # Schedule for 24th of each month at midnight, starting from 2025-07-24
+        # Schedule for 24th of each month at midnight SAST (22:00 UTC), starting from 2025-07-24
         scheduler.add_job(
             func=populate_monthly_budget,
             trigger='cron',
             day=24,
-            hour=0,
+            hour=22,
             minute=0,
-            start_date='2025-07-24 00:00:00',
+            start_date='2025-07-24 22:00:00',
             id='monthly_budget_population',
             replace_existing=True
         )
@@ -761,9 +761,9 @@ def initialize_scheduler():
     if scheduler is None:
         scheduler = setup_monthly_scheduler()
 
-if __name__ == '__main__':
-    # Initialize scheduler when running the app
-    initialize_scheduler()
-    
+# Always initialize scheduler (works with both development and production)
+initialize_scheduler()
+
+if __name__ == '__main__':    
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port, debug=True)

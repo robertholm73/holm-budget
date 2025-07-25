@@ -21,6 +21,8 @@
 	},
 	"budget_categories": {
 		"Peanut": {
+			"Tithing": 150,
+			"Car payment": 15333,
 			"Bank Charges": 100,
 			"Bibi Robotics": 500,
 			"Bibi Snacks": 500,
@@ -38,20 +40,28 @@
 			"Toiletries": 700,
 			"Vodacom": 970,
 			"Gifts": 500,
-			"Other": 500
+			"Other": 500,
+			"Savings": 500
 		},
 		"Robert": {
+			"Tithing": 150,
 			"Bank Charges": 100,
 			"Household Allowance": 35000,
 			"King Price": 918.43,
 			"Laptop Upgrade": 0,
 			"Rain Internet": 1125,
+			"Rain SIM card recharge": 50,
 			"Rent": 15000,
 			"Sequestration(x/17)": 12823.53,
 			"Software": 838,
 			"Transport": 4200,
-			"Town Council": 0,
-			"Uber": 200
+			"Town Council": {
+				"Account no 5013845367": 2064.36,
+				"Account no 5018362900": 262.6
+			},
+			"Uber": 400,
+			"Cigaretes": 250,
+			"Savings": 500
 		}
 	},
 	"Income": {
