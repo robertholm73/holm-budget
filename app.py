@@ -1195,30 +1195,6 @@ def setup_enhanced_monthly_scheduler():
         return None
 
 
-# Add this enhanced admin endpoint
-@app.route("/admin/populate_budget_enhanced", methods=["POST"])
-def admin_populate_budget_enhanced():
-    """Admin endpoint to manually trigger enhanced monthly budget population"""
-    try:
-        success = populate_monthly_budget_with_periods()
-        if success:
-            return jsonify(
-                {
-                    "status": "success",
-                    "message": "Enhanced monthly budget population completed successfully",
-                }
-            )
-        else:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Enhanced budget population failed",
-                }
-            )
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-
 def setup_enhanced_monthly_scheduler():
     """Set up the enhanced monthly budget scheduler"""
     try:
@@ -1246,7 +1222,6 @@ def setup_enhanced_monthly_scheduler():
         return None
 
 
-# Add this enhanced admin endpoint
 @app.route("/admin/populate_budget_enhanced", methods=["POST"])
 def admin_populate_budget_enhanced():
     """Admin endpoint to manually trigger enhanced monthly budget population"""
